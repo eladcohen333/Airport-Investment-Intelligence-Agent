@@ -182,7 +182,8 @@ Command (launched detached with stdout/stderr redirected to `logs/refresh_nation
 | 1 (downloads) | 15:02:38 | 15:19:30 | 16 min 52 s | all 8 T-100 years and 89/91 OTP months loaded; 2 OTP months failed validation; final atomic replace failed (see failures) |
 | 2 (from `data/raw` cache, after the fix) | 15:22:03 | 15:27:30 | 328.5 s | success, exit code 0; `database written` |
 
-Download volume: 93 zips, about 2.7 GB under `data/raw/` (kept with `--keep-raw`). Downloads ran at roughly 1.5 MB/s;
+Download volume: 99 zips (91 OTP months, 8 T-100 years) plus the OurAirports CSV, 2.4 GB under `data/raw/` (kept with
+`--keep-raw`). Downloads ran at roughly 1.5 MB/s;
 the demo-scope months (2023-01..2026-07) were already cached from the earlier demo refresh.
 
 ### Failures and fixes
