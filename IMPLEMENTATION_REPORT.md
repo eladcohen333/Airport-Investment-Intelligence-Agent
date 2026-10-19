@@ -37,4 +37,71 @@ Verification:
 | metadata recorded and summarized | pass (`test_metadata_roundtrip`) |
 | `python -m pytest -q` | 7 passed |
 
-(Later phases are appended below as they complete.)
+### Phase 2 - Historical ingestion and real-data refresh
+
+- `src/data_ingestion.py`: BTS On-Time Performance adapter (static monthly PREZIP zips, 4 parallel downloads),
+  T-100 Segment (All Carriers) adapter (TranStats ASP.NET form postback, one file per year, U.S. origins, service class F),
+  OurAirports reference, validators (columns, period, airport codes, rate ranges, national volume), honest failure metadata,
+  atomic database replacement. `scripts/refresh_data.py` with `--scope demo|nationwide`.
+- Environment finding: `requests`/certifi failed TLS verification on this corporate network (TLS inspection root only in the
+  Windows store). Fixed by `truststore.inject_into_ssl()` (OS trust store); documented in the README.
+
+Verification (real public data, this environment):
+
+| Command | Result |
+|---|---|
+| `python scripts/refresh_data.py --scope demo --start 2023-01 --keep-raw --workers 4` | exit 0 in 832 s; T-100 years 2023-2026 and 43 On-Time months loaded, no failures |
+| `python scripts/refresh_data.py --show-metadata` | T-100: 29,148 traffic rows, 2023-01-01..2026-07-31, ok; On-Time: 14,582 rows, 2023-01-01..2026-07-31, ok; OurAirports 2,036 U.S. airports, ok; airports table 813 rows; route_monthly_metrics 434,229 rows |
+| coverage check | LAX, SNA, ANC, SFO and the New England airports (BOS, BDL, PVD, MHT, PWM, BTV, ...) each have 43 traffic and 43 operations months; 13 New England airports have both traffic and operations data |
+| `python -m pytest -q tests/test_data_ingestion.py` | 22 passed (fixture slices shaped like the BTS files, runner end-to-end with fake downloads, honest-failure path) |
+
+### Phase 3 - Analytics and scoring
+
+- `src/scoring.py` (pure math) and `src/analytics.py` (DuckDB queries, periods, coverage, route mix, series, score snapshot).
+
+| Check | Result |
+|---|---|
+| weights sum to 100 % (Expansion 40/35/25, Proxy 50/30/20, Pressure 70/30) | pass |
+| expected calculations against fixtures (BOS 2024 growth = 5.0 %, LAX delay rate 20 % / cancellation 2 %, ANC long-haul 25 % at 2,000 mi, 60 % at 1,400 mi) | pass |
+| zero denominators and missing data return None with reason codes | pass |
+| insufficient coverage excluded honestly (TNY: 360 flights < 500) | pass |
+| size band never changes scores; results deterministic under row shuffle | pass |
+| `python -m pytest -q` | 108 passed at the end of Phase 4 |
+
+### Phase 4 - Generic analytical tools
+
+- `src/tools.py`: the eight typed tools, `execute_tool` (never raises), strict Anthropic schemas and Gemini schema variant.
+- `src/airport_resolver.py`: code / alias / city+state / city-dominance / fuzzy resolution; ambiguity returns candidates.
+
+| Check | Result |
+|---|---|
+| tests cover LAX, SNA, ANC, SFO | pass (`tests/test_tools.py`) |
+| generic non-example airport (AUS profile, Texas medium ranking, DEN/PHX/LAS comparison) | pass |
+| ambiguous ("Washington" -> DCA/IAD) and unknown ("Atlantis") handling | pass |
+| invalid inputs and unknown tool names return `error` results without exceptions | pass |
+
+### Phase 5 - Agent and conversation context
+
+- `src/agent.py` (backend-neutral loop, grounding guard, session context), `src/llm_backends.py` (Anthropic default,
+  Gemini alternative), `src/demo_router.py` (no-key deterministic mode).
+
+| Check | Result |
+|---|---|
+| LAX/SNA then "What about 2024?" reuses LAX and SNA and changes only the period | pass (`test_follow_up_reuses_airports_and_changes_period`) |
+| no tool result => no numeric answer | pass (`test_no_tool_result_means_no_numeric_answer`) |
+| demo mode without a key routes all nine required/also-support questions | pass |
+| live LLM tool-calling smoke test | pending user key: run `python scripts/smoke_llm.py` after adding `GEMINI_API_KEY` (or `ANTHROPIC_API_KEY`) to `.env` |
+| `python -m pytest -q` | 148 passed |
+
+### Phase 6 - Live API provider
+
+- `src/live_provider.py`: `LiveFlightProvider` protocol, `AviationstackProvider`, `NullLiveProvider`, error mapping
+  (401/403/429/5xx/timeouts), retrieval timestamps, rate-limit `Retry-After`.
+
+| Check | Result |
+|---|---|
+| missing key -> explicit `unavailable`; API error responses mapped | pass (`tests/test_live_provider.py`) |
+| live data never touches historical tables | pass |
+| integration smoke with a valid key | not run (no AVIATIONSTACK_API_KEY available); command: `python scripts/smoke_live.py LAX` |
+
+(Phases 7 and 8 are appended below as they complete.)

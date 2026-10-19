@@ -1,0 +1,12 @@
+{
+  "_comment": "FIXTURE DATA ONLY - synthetic sample shaped like the Aviationstack /v1/flights response. Not live data.",
+  "pagination": {"limit": 100, "offset": 0, "count": 6, "total": 120},
+  "data": [
+    {"flight_date": "2026-10-19", "flight_status": "scheduled", "departure": {"airport": "Los Angeles International", "iata": "LAX", "scheduled": "2026-10-19T14:00:00+00:00", "estimated": "2026-10-19T14:20:00+00:00", "actual": null, "delay": 20}, "arrival": {"iata": "JFK"}, "airline": {"name": "Fixture Air", "iata": "FX"}, "flight": {"number": "101", "iata": "FX101"}},
+    {"flight_date": "2026-10-19", "flight_status": "active", "departure": {"iata": "LAX", "scheduled": "2026-10-19T13:00:00+00:00", "actual": "2026-10-19T13:45:00+00:00", "delay": 45}, "arrival": {"iata": "SFO"}, "airline": {"name": "Fixture Air", "iata": "FX"}, "flight": {"number": "102", "iata": "FX102"}},
+    {"flight_date": "2026-10-19", "flight_status": "active", "departure": {"iata": "LAX", "scheduled": "2026-10-19T13:10:00+00:00", "actual": "2026-10-19T13:20:00+00:00", "delay": 10}, "arrival": {"iata": "DEN"}, "airline": {"name": "Fixture Air", "iata": "FX"}, "flight": {"number": "103", "iata": "FX103"}},
+    {"flight_date": "2026-10-19", "flight_status": "landed", "departure": {"iata": "LAX", "scheduled": "2026-10-19T10:00:00+00:00", "actual": "2026-10-19T10:00:00+00:00", "delay": 0}, "arrival": {"iata": "LAS"}, "airline": {"name": "Fixture Air", "iata": "FX"}, "flight": {"number": "104", "iata": "FX104"}},
+    {"flight_date": "2026-10-19", "flight_status": "cancelled", "departure": {"iata": "LAX", "scheduled": "2026-10-19T15:00:00+00:00", "actual": null, "delay": null}, "arrival": {"iata": "PHX"}, "airline": {"name": "Fixture Air", "iata": "FX"}, "flight": {"number": "105", "iata": "FX105"}},
+    {"flight_date": "2026-10-19", "flight_status": "scheduled", "departure": {"iata": "LAX", "scheduled": "2026-10-19T16:00:00+00:00", "actual": null, "delay": null}, "arrival": {"iata": "SEA"}, "airline": {"name": "Fixture Air", "iata": "FX"}, "flight": {"number": "106", "iata": "FX106"}}
+  ]
+}
