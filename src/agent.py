@@ -136,14 +136,23 @@ def grounded_numbers(results: list[ToolResult]) -> set[float]:
     return expanded
 
 
+def _round_sig(value: float, digits: int) -> float:
+    if value == 0:
+        return 0.0
+    import math
+    return round(value, digits - int(math.floor(math.log10(abs(value)))) - 1)
+
+
 def _matches(x: float, candidates: set[float]) -> bool:
+    """A quoted figure is grounded when it equals a tool value up to ordinary rounding (decimals or significant figures)."""
     for y in candidates:
-        tol = max(0.051, abs(y) * 0.01)
-        if abs(x - y) <= tol:
+        if abs(x - y) <= 0.051:
             return True
-        # the model may round 24.39 -> 24.4 or 24; allow rounding to fewer decimals
-        for nd in (0, 1, 2):
+        for nd in (0, 1, 2):                      # 24.39 -> 24.4 or 24
             if abs(x - round(y, nd)) <= 1e-9:
+                return True
+        for sig in (2, 3, 4):                     # 21,437,809 -> 21.4 million; 190,106 -> 190,000
+            if abs(x - _round_sig(y, sig)) <= 1e-9 * max(1.0, abs(y)):
                 return True
     return False
 
@@ -222,7 +231,12 @@ class AnalyticsAgent:
                 turn = build_turn_from_results(calls, mode=self.mode, usage=usage_total, model=self.backend.model)
                 turn.grounding_warnings.append(f"The language model failed after the tools ran ({exc}); showing the deterministic summary instead.")
                 return turn
-            return self._error_turn(f"{exc} Deterministic mode remains available.", calls, usage_total)
+            # the model never answered: route the question deterministically so the analyst still gets a grounded answer
+            fallback = DemoAgent(today=tool_ctx.today).run(question, ctx, defaults, tool_ctx)
+            fallback.usage = usage_total
+            fallback.model = self.backend.model
+            fallback.grounding_warnings.insert(0, f"The language model was unavailable ({exc}); this answer was produced by the deterministic router.")
+            return fallback
         except Exception as exc:  # noqa: BLE001 - never leak a stack trace to the UI
             log.exception("agent loop failed")
             if calls:

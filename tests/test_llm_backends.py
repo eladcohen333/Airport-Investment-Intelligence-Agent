@@ -116,6 +116,34 @@ def test_gemini_complete_parses_function_calls():
     assert backend.parse_response(blocked).stop_reason == "refusal"
 
 
+def test_gemini_switches_to_fallback_model_on_overload(monkeypatch):
+    monkeypatch.setattr(lb.time, "sleep", lambda s: None)
+
+    class Overloaded(Exception):
+        pass
+
+    class Models:
+        def __init__(self):
+            self.calls = []
+
+        def generate_content(self, **kwargs):
+            self.calls.append(kwargs["model"])
+            if kwargs["model"] == "gemini-3.8-flash":
+                raise Overloaded("503 UNAVAILABLE. This model is currently experiencing high demand.")
+            part = SimpleNamespace(function_call=None, text="**Conclusion:** fine.", thought=False)
+            return SimpleNamespace(candidates=[SimpleNamespace(content=SimpleNamespace(role="model", parts=[part]), finish_reason="STOP")], usage_metadata=None)
+
+    models = Models()
+    backend = lb.GeminiBackend(api_key="k", model="gemini-3.8-flash", client=SimpleNamespace(models=models),
+                               fallback_models=("gemini-3.6-flash", "gemini-3.5-flash-lite"), max_server_error_retries=1)
+    resp = backend.complete("s", HISTORY[:1], [])
+    assert resp.text.startswith("**Conclusion:**")
+    assert models.calls == ["gemini-3.8-flash", "gemini-3.6-flash"]      # overload -> immediate switch, no retry on the overloaded model
+    assert backend.model == "gemini-3.6-flash" and backend.primary_model == "gemini-3.8-flash"
+    backend.complete("s", HISTORY[:1], [])
+    assert models.calls[-1] == "gemini-3.6-flash"                                              # stays on the working model
+
+
 def test_gemini_errors_map_to_backend_error():
     class Boom(Exception):
         pass
@@ -136,7 +164,7 @@ def test_gemini_errors_map_to_backend_error():
 
 def _settings(**over):
     base = dict(project_root=".", llm_provider="auto", anthropic_api_key=None, anthropic_model="claude-opus-5-5", gemini_api_key=None,
-                gemini_model="gemini-3.8-flash", aviationstack_api_key=None, aviationstack_base_url="https://api.aviationstack.com/v1",
+                gemini_model="gemini-3.8-flash", gemini_fallback_models=("gemini-3.6-flash",), aviationstack_api_key=None, aviationstack_base_url="https://api.aviationstack.com/v1",
                 duckdb_path="data/x.duckdb", long_haul_threshold_miles=2000, min_reported_flights=500, demo_scope_start="2023-01",
                 nationwide_scope_start="2019-01", log_level="INFO")
     base.update(over)

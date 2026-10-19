@@ -157,6 +157,17 @@ def test_extract_numbers_and_grounding(demo, tool_ctx, defaults):
     assert ag.grounding_warnings("LAX delay rate was 0.2 of flights", results) == []
     warnings = ag.grounding_warnings("SNA cancellation rate is 7.77%.", results)
     assert warnings and "7.77" in warnings[0]
+    # rounding to significant figures is fine, a misquoted score is not
+    assert ag.grounding_warnings("LAX handled about 240 thousand flights and 30 million passengers.", results) == []
+    assert ag.grounding_warnings("LAX delay rate was 19.4%.", results)          # tool says 20.0
+
+
+def test_grounding_rejects_misquoted_score(demo, tool_ctx, defaults):
+    turn = demo.run("What is the capacity-pressure signal at SFO and why?", SessionContext(), defaults, tool_ctx)
+    results = [c.result for c in turn.tool_calls]
+    proxy = results[0].metrics["capacity_pressure_proxy"]
+    assert ag.grounding_warnings(f"SFO's proxy is {proxy}.", results) == []
+    assert ag.grounding_warnings(f"SFO's proxy is {round(proxy - 0.6, 1)}.", results)
 
 
 # --------------------------------------------------------------------------------------
@@ -230,8 +241,11 @@ def test_refusal_and_backend_errors(tool_ctx, defaults):
     assert turn.answer_kind == "error" and "declined" in turn.conclusion
 
     failing = FakeBackend([BackendError("Anthropic rate limit reached; try again shortly.", retryable=True, kind="rate_limit")])
-    turn = ag.AnalyticsAgent(failing, mode="anthropic").run("x", SessionContext(), defaults, tool_ctx)
-    assert turn.answer_kind == "error" and "rate limit" in turn.conclusion and "Traceback" not in turn.answer_markdown
+    turn = ag.AnalyticsAgent(failing, mode="anthropic").run("What percentage of departures from ANC are long-haul?", SessionContext(), defaults, tool_ctx)
+    # model unavailable before any tool ran -> deterministic router answers, with a visible note
+    assert turn.answer_kind == "answer" and turn.mode == "demo" and turn.tool_calls[0].name == "analyze_route_mix"
+    assert any("deterministic router" in w and "rate limit" in w for w in turn.grounding_warnings)
+    assert "Traceback" not in turn.answer_markdown
 
     after_tools = FakeBackend([_tool_use("analyze_route_mix", {"airport": "ANC"}), BackendError("network down", retryable=True, kind="network")])
     turn = ag.AnalyticsAgent(after_tools, mode="anthropic").run("ANC long haul", SessionContext(), defaults, tool_ctx)

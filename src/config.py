@@ -19,6 +19,7 @@ ProviderName = Literal["anthropic", "gemini", "demo"]
 
 DEFAULT_ANTHROPIC_MODEL = "claude-opus-5-5"
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
+DEFAULT_GEMINI_FALLBACKS = "gemini-3.6-flash,gemini-3.5-flash-lite"   # tried in order when the primary model is overloaded (503)
 DEFAULT_AVIATIONSTACK_BASE_URL = "https://api.aviationstack.com/v1"
 
 
@@ -49,6 +50,7 @@ class Settings:
     anthropic_model: str
     gemini_api_key: Optional[str]
     gemini_model: str
+    gemini_fallback_models: tuple[str, ...]
     aviationstack_api_key: Optional[str]
     aviationstack_base_url: str
     duckdb_path: Path
@@ -97,6 +99,7 @@ def load_settings(env_file: Optional[Path] = None, override: bool = False) -> Se
         anthropic_model=_env("ANTHROPIC_MODEL", DEFAULT_ANTHROPIC_MODEL) or DEFAULT_ANTHROPIC_MODEL,
         gemini_api_key=_env("GEMINI_API_KEY"),
         gemini_model=_env("GEMINI_MODEL", DEFAULT_GEMINI_MODEL) or DEFAULT_GEMINI_MODEL,
+        gemini_fallback_models=tuple(m.strip() for m in (_env("GEMINI_FALLBACK_MODELS", DEFAULT_GEMINI_FALLBACKS) or "").split(",") if m.strip()),
         aviationstack_api_key=_env("AVIATIONSTACK_API_KEY"),
         aviationstack_base_url=_env("AVIATIONSTACK_BASE_URL", DEFAULT_AVIATIONSTACK_BASE_URL) or DEFAULT_AVIATIONSTACK_BASE_URL,
         duckdb_path=duckdb_path,

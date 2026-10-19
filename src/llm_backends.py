@@ -155,12 +155,16 @@ class GeminiBackend:
     name = "gemini"
 
     def __init__(self, api_key: Optional[str], model: str, client: Any = None, temperature: float = 0.0, max_output_tokens: int = 4000,
-                 max_rate_limit_retries: int = 2, max_rate_limit_wait: float = 70.0):
+                 max_rate_limit_retries: int = 2, max_rate_limit_wait: float = 70.0, max_server_error_retries: int = 2,
+                 fallback_models: tuple[str, ...] = ()):
         self.model = model
+        self.primary_model = model
+        self.fallback_models = tuple(m for m in fallback_models if m and m != model)
         self.temperature = temperature
         self.max_output_tokens = max_output_tokens
         self.max_rate_limit_retries = max_rate_limit_retries
         self.max_rate_limit_wait = max_rate_limit_wait
+        self.max_server_error_retries = max_server_error_retries
         if client is None:
             from google import genai
 
@@ -237,6 +241,14 @@ class GeminiBackend:
                 if "401" in msg or "403" in msg or "API key" in msg or "PERMISSION_DENIED" in msg:
                     raise BackendError("The Gemini API key was rejected.", kind="auth") from exc
                 if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+                    if self.fallback_models:
+                        # free-tier quotas are per model: move to the next configured model instead of waiting
+                        next_model = self.fallback_models[0]
+                        self.fallback_models = self.fallback_models[1:]
+                        log.warning("Gemini quota reached on %s; switching to fallback model %s", self.model, next_model)
+                        self.model = next_model
+                        attempt = 0
+                        continue
                     delay = _retry_delay_seconds(msg)
                     if attempt < self.max_rate_limit_retries and delay is not None and delay <= self.max_rate_limit_wait:
                         attempt += 1
@@ -244,8 +256,25 @@ class GeminiBackend:
                         time.sleep(delay)
                         continue
                     raise BackendError("Gemini rate limit or quota reached; try again shortly.", retryable=True, kind="rate_limit") from exc
+                transient = msg[:3] in ("500", "502", "503", "504") or "UNAVAILABLE" in msg or "ServerError" in name
+                if transient and self.fallback_models:
+                    # overload and quotas are per model: switch to the next configured model right away, for this and later calls
+                    next_model = self.fallback_models[0]
+                    self.fallback_models = self.fallback_models[1:]
+                    log.warning("Gemini model %s unavailable (%s); switching to fallback model %s", self.model, msg[:40], next_model)
+                    self.model = next_model
+                    attempt = 0
+                    continue
+                if transient and attempt < self.max_server_error_retries:
+                    attempt += 1
+                    delay = 3.0 * attempt
+                    log.warning("Gemini transient server error (%s); retry %s/%s in %.0fs", msg[:60], attempt, self.max_server_error_retries, delay)
+                    time.sleep(delay)
+                    continue
                 log.warning("Gemini API error %s: %s", name, msg[:600])
-                raise BackendError(f"Gemini API error ({name}).", retryable=msg[:1] == "5", kind="api") from exc
+                if transient:
+                    raise BackendError("The Gemini service is temporarily unavailable (high demand).", retryable=True, kind="server") from exc
+                raise BackendError(f"Gemini API error ({name}).", retryable=False, kind="api") from exc
         return self.parse_response(resp)
 
     def parse_response(self, resp: Any) -> BackendResponse:
@@ -285,7 +314,7 @@ def build_backend(settings: Settings) -> tuple[Optional[LLMBackend], str]:
         if provider == "anthropic":
             return AnthropicBackend(settings.anthropic_api_key, settings.anthropic_model), "anthropic"
         if provider == "gemini":
-            return GeminiBackend(settings.gemini_api_key, settings.gemini_model), "gemini"
+            return GeminiBackend(settings.gemini_api_key, settings.gemini_model, fallback_models=settings.gemini_fallback_models), "gemini"
     except Exception as exc:  # SDK import/initialisation failures degrade to demo mode
         log.error("LLM backend %s unavailable: %s", provider, exc)
     return None, "demo"
