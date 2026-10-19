@@ -64,20 +64,23 @@ def _df(rows: list[dict[str, Any]]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _show_df(df: pd.DataFrame, height: Optional[int] = None) -> None:
+def _show_df(df: pd.DataFrame, height: Optional[int] = None, key: Optional[str] = None) -> None:
+    # Streamlit derives the auto element ID from the data itself, so two identical tables in one run
+    # (e.g. the same question asked twice) raise StreamlitDuplicateElementId unless each has its own key.
     if df.empty:
         return
     try:
-        st.dataframe(df, hide_index=True, width="stretch", height=height)
+        st.dataframe(df, hide_index=True, width="stretch", height=height, key=key)
     except TypeError:  # older Streamlit
-        st.dataframe(df, hide_index=True, use_container_width=True, height=height)
+        st.dataframe(df, hide_index=True, use_container_width=True, height=height, key=key)
 
 
-def _show_chart(fig) -> None:
+def _show_chart(fig, key: Optional[str] = None) -> None:
+    # Same as _show_df: the auto ID hashes the figure spec, so identical charts need an explicit key.
     try:
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False}, key=key)
     except TypeError:
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False}, key=key)
 
 
 # --------------------------------------------------------------------------------------
@@ -262,7 +265,7 @@ def _evidence_block(result: ToolResult) -> None:
     )
 
 
-def _methodology_panel(result: ToolResult) -> None:
+def _methodology_panel(result: ToolResult, key_prefix: str) -> None:
     p = result.payload
     with st.expander("How this was calculated"):
         st.markdown(f"**Tool:** `{result.tool_name}`  |  **Status:** {result.status}  |  **Period:** {result.period.label if result.period else 'n/a'}")
@@ -278,7 +281,7 @@ def _methodology_panel(result: ToolResult) -> None:
                 st.markdown("**Screening conditions:** " + ", ".join(f"{c.metric} {c.op} {c.value}" for c in p.conditions))
             if p.exclusions:
                 st.markdown(f"**Excluded airports ({len(p.exclusions)}):**")
-                _show_df(exclusions_table(p), height=min(300, 40 + 35 * len(p.exclusions)))
+                _show_df(exclusions_table(p), height=min(300, 40 + 35 * len(p.exclusions)), key=f"{key_prefix}_exclusions")
         elif isinstance(p, CapacityPressureResult):
             st.markdown(f"**Peer group:** {p.peer_group.describe()} (n={p.peer_group_size}). Capacity Pressure Proxy = 50% utilization percentile + "
                         "30% demand-growth percentile + 20% operational-pressure percentile (Hazen percentile ranks within the peer group).")
@@ -308,7 +311,7 @@ def _methodology_panel(result: ToolResult) -> None:
             st.json(flat, expanded=False)
 
 
-def _render_result(result: ToolResult) -> None:
+def _render_result(result: ToolResult, key_prefix: str) -> None:
     p = result.payload
     if isinstance(p, RouteMixResult):
         c1, c2, c3 = st.columns(3)
@@ -328,13 +331,13 @@ def _render_result(result: ToolResult) -> None:
         c4.metric("Avg departure delay", f"{p.avg_departure_delay_minutes:.1f} min" if p.avg_departure_delay_minutes is not None else "n/a")
     table = table_for_result(result)
     if table is not None and not table.empty:
-        _show_df(table, height=min(420, 40 + 35 * (len(table) + 1)))
+        _show_df(table, height=min(420, 40 + 35 * (len(table) + 1)), key=f"{key_prefix}_table")
     if result.status != "ok" and result.message:
         (st.warning if result.status in ("insufficient_data", "ambiguous", "unavailable") else st.error)(result.message)
     fig = chart_for_result(result)
     if fig is not None:
-        _show_chart(fig)
-    _methodology_panel(result)
+        _show_chart(fig, key=f"{key_prefix}_chart")
+    _methodology_panel(result, key_prefix)
     if result.limitations:
         with st.container():
             st.markdown('<div class="section-head">Assumptions and limitations</div>', unsafe_allow_html=True)
@@ -342,7 +345,9 @@ def _render_result(result: ToolResult) -> None:
     _evidence_block(result)
 
 
-def render_turn(turn: AgentTurn) -> None:
+def render_turn(turn: AgentTurn, key_prefix: str = "turn") -> None:
+    """Render one assistant turn. `key_prefix` must be unique per turn within a script run; it seeds the
+    explicit keys of the tables and charts so identical results in different turns do not collide."""
     conclusion = turn.conclusion or "(no conclusion)"
     st.markdown(f'<div class="conclusion">{conclusion}</div>', unsafe_allow_html=True)
     body = (turn.answer_markdown or "").strip()
@@ -361,13 +366,13 @@ def render_turn(turn: AgentTurn) -> None:
         if both:
             st.markdown(f"#### {HISTORICAL_HEADING}")
         for i in turn.historical_calls:
-            _render_result(turn.tool_calls[i].result)
+            _render_result(turn.tool_calls[i].result, f"{key_prefix}_call{i}")
     if turn.live_calls:
         if both:
             st.divider()
             st.markdown(f"#### {LIVE_HEADING}")
         for i in turn.live_calls:
-            _render_result(turn.tool_calls[i].result)
+            _render_result(turn.tool_calls[i].result, f"{key_prefix}_call{i}")
 
 
 def render_missing_database(db_path: str) -> None:

@@ -79,11 +79,11 @@ def main() -> None:
 
     clicked = render_suggested_questions()
     st.markdown('<div class="section-head">Conversation</div>', unsafe_allow_html=True)
-    for question, turn in st.session_state.turns:
+    for idx, (question, turn) in enumerate(st.session_state.turns):
         with st.chat_message("user"):
             st.markdown(question)
         with st.chat_message("assistant"):
-            render_turn(turn)
+            render_turn(turn, key_prefix=f"turn{idx}")
 
     typed = st.chat_input("Ask about airport demand growth, utilization, operational pressure, long-haul mix or live status...")
     question = typed or clicked
@@ -99,7 +99,8 @@ def main() -> None:
                     turn = AgentTurn(mode=bundle.mode if bundle.mode in ("anthropic", "gemini", "demo") else "demo", answer_kind="error",
                                      conclusion="The analysis could not be completed because of an internal error. Details were written to logs/app.log.",
                                      answer_markdown=f"Error type: {type(exc).__name__}. Try rephrasing the question or check the data refresh.")
-            render_turn(turn)
+            # the new turn becomes index len(turns) once appended, so its keys stay stable on the next rerun
+            render_turn(turn, key_prefix=f"turn{len(st.session_state.turns)}")
         st.session_state.turns.append((question, turn))
         st.session_state.ctx = update_context(st.session_state.ctx, question, turn)
 
