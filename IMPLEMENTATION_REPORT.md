@@ -104,4 +104,65 @@ Verification (real public data, this environment):
 | live data never touches historical tables | pass |
 | integration smoke with a valid key | not run (no AVIATIONSTACK_API_KEY available); command: `python scripts/smoke_live.py LAX` |
 
-(Phases 7 and 8 are appended below as they complete.)
+### Phase 7 - UI and end-to-end checks
+
+- `app.py`, `src/ui_components.py`, `src/charts.py`: compact analyst dashboard (sidebar with scope, refresh date, period
+  selector, state/region and size filters, long-haul threshold, live toggle + availability, LLM-mode badge; four
+  suggested-question buttons; Streamlit chat; conclusion first; metric table; one Plotly chart per answer; "How this was
+  calculated" expander; "Assumptions and limitations" panel; evidence block; separate Historical / Live sections).
+- Chart palette validated with the dataviz validator (3 and 6 categorical slots pass; contrast relief satisfied by the
+  tables that accompany every chart).
+
+Manual tests in the built-in browser against the real demo database (deterministic mode, no keys):
+
+| Test | Result |
+|---|---|
+| "Which airports in New England are strong candidates for terminal expansion?" | ok: 10 airports ranked (BGR, ORH, BOS, ...), 3 excluded with reasons, table + decomposition chart, evidence block |
+| "Compare LAX and Santa Ana Airport, SNA, congestion levels." | ok: SNA higher operational pressure by rates; LAX more flights, stated as not congestion |
+| "What percentage of departures from Anchorage, ANC, are long-haul?" | ok: 15.2 % (5,645 of 37,243) at 2,000 mi, 12 months |
+| "What is the capacity-pressure signal at SFO and why?" | ok: proxy 75.7/100 among 30 large hubs, components and disclaimer |
+| generic non-example airport ("What about Boston?" after the ranking; Texas medium ranking; DEN/PHX/LAS; Boston Logan 2024) | ok |
+| follow-up ("Compare LAX and SNA congestion." then "What about 2024?") | ok: same airports, calendar 2024 vs 2023 |
+| no-key state | sidebar shows "Demo / deterministic mode"; all questions answered through tools |
+| missing live key | live toggle on + "What is the current operational status at LAX?" -> explicit "AVIATIONSTACK_API_KEY is not set; live operational context is unavailable."; historical answers unchanged |
+| stack traces | none in the UI (checked page text; errors go to `logs/app.log`) |
+| `python -m pytest -q` | 148 passed |
+
+### Phase 8 - Documentation and handoff
+
+- `README.md` (purpose, architecture, setup, environment variables, refresh commands, run, test, sources, formulas,
+  limitations, sample questions, live constraints, Windows TLS note) and `docs/architecture.md`.
+
+Final verification (see the end of this file for the exact outputs):
+
+| Command | Result |
+|---|---|
+| `python -m pytest -q` | 148 passed |
+| `python -m compileall -q src tests scripts app.py` | OK |
+| `python scripts/smoke_streamlit.py --port 8765` | STREAMLIT HEALTH: OK |
+
+## Unavoidable external limitations
+
+- **Live LLM smoke test** not executed: no `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` was present in this environment
+  (the user indicated a Gemini key would be added to `.env`). Command: `python scripts/smoke_llm.py`. Unit tests cover
+  both backends with fake clients; the Gemini schema variant and `tool` role rendering should be confirmed on the
+  first real run.
+- **Live API integration smoke** not executed: no `AVIATIONSTACK_API_KEY`. Command: `python scripts/smoke_live.py LAX`.
+- **Nationwide refresh** not executed during the build (about 2.8 GB of downloads at ~1.5 MB/s on this network);
+  the same pipeline is used: `python scripts/refresh_data.py --scope nationwide`.
+
+## Summary
+
+1. **Files**: `app.py`, `requirements.txt`, `.env.example`, `.gitignore`, `pytest.ini`, `.streamlit/config.toml`,
+   `.claude/launch.json`, `README.md`, `docs/architecture.md`, `IMPLEMENTATION_REPORT.md`, `scripts/refresh_data.py`,
+   `scripts/smoke_streamlit.py`, `scripts/smoke_llm.py`, `scripts/smoke_live.py`, `src/{config,models,db,data_ingestion,
+   airport_resolver,analytics,scoring,tools,live_provider,llm_backends,agent,demo_router,charts,ui_components}.py`,
+   `tests/` (10 test modules, synthetic fixtures under `tests/fixtures/`).
+2. **Setup**: `"C:\Program Files\Python311\python.exe" -m venv .venv` then `.venv\Scripts\python.exe -m pip install -r requirements.txt`.
+3. **Refresh**: `.venv\Scripts\python.exe scripts/refresh_data.py --scope demo` / `--scope nationwide`.
+4. **Run**: `.venv\Scripts\python.exe -m streamlit run app.py`.
+5. **Test**: `.venv\Scripts\python.exe -m pytest -q` -> 148 passed.
+6. **Real historical refresh**: succeeded in this environment (demo scope, 2023-01..2026-07, 813 airports, 43 months).
+7. **Live API**: not tested with a valid key (none available); unavailable state verified.
+8. **User configuration remaining**: add `GEMINI_API_KEY` (or `ANTHROPIC_API_KEY`) and optionally `AVIATIONSTACK_API_KEY`
+   to `.env`, then run the two smoke scripts.
