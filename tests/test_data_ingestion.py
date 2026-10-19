@@ -71,6 +71,13 @@ def test_national_volume_validation():
     ing.validate_national_volume(pd.DataFrame({"total_flights": [400_000]}), "2026-07")
 
 
+def test_national_volume_lower_bound_admits_covid_trough():
+    # May 2020 reported 180,617 flights nationally; the bound must accept it but still reject implausibly low totals.
+    ing.validate_national_volume(pd.DataFrame({"total_flights": [180_617]}), "2020-05")
+    with pytest.raises(ing.DataValidationError, match="national flight count"):
+        ing.validate_national_volume(pd.DataFrame({"total_flights": [100_000]}), "2020-05")
+
+
 # --------------------------------------------------------------------------------------
 # T-100 aggregation
 # --------------------------------------------------------------------------------------

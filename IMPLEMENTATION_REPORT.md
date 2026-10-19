@@ -148,8 +148,8 @@ Final verification (see the end of this file for the exact outputs):
   both backends with fake clients; the Gemini schema variant and `tool` role rendering should be confirmed on the
   first real run.
 - **Live API integration smoke** not executed: no `AVIATIONSTACK_API_KEY`. Command: `python scripts/smoke_live.py LAX`.
-- **Nationwide refresh** not executed during the build (about 2.8 GB of downloads at ~1.5 MB/s on this network);
-  the same pipeline is used: `python scripts/refresh_data.py --scope nationwide`.
+- **Nationwide refresh** was not executed during the build (about 2.8 GB of downloads at ~1.5 MB/s on this network);
+  it was run afterwards, see "Nationwide refresh" below.
 
 ## Summary
 
@@ -166,3 +166,71 @@ Final verification (see the end of this file for the exact outputs):
 7. **Live API**: not tested with a valid key (none available); unavailable state verified.
 8. **User configuration remaining**: add `GEMINI_API_KEY` (or `ANTHROPIC_API_KEY`) and optionally `AVIATIONSTACK_API_KEY`
    to `.env`, then run the two smoke scripts.
+
+## Nationwide refresh
+
+Run on 2026-10-19 after the build, replacing the demo-scope store with the complete history.
+
+Command (launched detached with stdout/stderr redirected to `logs/refresh_nationwide*.log`):
+
+```
+.venv\Scripts\python.exe scripts/refresh_data.py --scope nationwide --keep-raw --workers 4
+```
+
+| Run | Start | End | Elapsed | Outcome |
+|---|---|---|---|---|
+| 1 (downloads) | 15:02:38 | 15:19:30 | 16 min 52 s | all 8 T-100 years and 89/91 OTP months loaded; 2 OTP months failed validation; final atomic replace failed (see failures) |
+| 2 (from `data/raw` cache, after the fix) | 15:22:03 | 15:27:30 | 328.5 s | success, exit code 0; `database written` |
+
+Download volume: 93 zips, about 2.7 GB under `data/raw/` (kept with `--keep-raw`). Downloads ran at roughly 1.5 MB/s;
+the demo-scope months (2023-01..2026-07) were already cached from the earlier demo refresh.
+
+### Failures and fixes
+
+1. **OTP 2020-05 and 2020-06 rejected by the national-volume sanity check** (`national flight count 180,617 /
+   223,732 outside expected range 250,000-900,000`). These are the real COVID-19 trough months, not bad data.
+   Fix: `NATIONAL_MONTHLY_FLIGHTS_RANGE` lower bound in `src/data_ingestion.py` lowered from 250,000 to 150,000 with a
+   comment; `validate_national_volume` unchanged otherwise. New test `test_national_volume_lower_bound_admits_covid_trough`
+   asserts that 180,617 passes and 100,000 still fails. Run 2 loaded 2020-04 (313,382 flights), 2020-05 (180,617) and
+   2020-06 (223,732) normally.
+2. **Run 1 could not replace the database** (`PermissionError: [WinError 5]` on `data/airport_intelligence.duckdb.tmp ->
+   data/airport_intelligence.duckdb`): a Streamlit preview of the app (port 8501) was still running and held its cached
+   read-only DuckDB connection, which blocks `os.replace` on Windows. The pipeline behaved as designed (temporary file
+   removed, existing demo database untouched). Run 2 was written to a side path with `--db` while the preview was
+   stopped, then moved over `data/airport_intelligence.duckdb`; the side file and WAL were removed so one store remains.
+   Operational note: stop the Streamlit app before refreshing.
+
+### Metadata after the refresh (`scripts/refresh_data.py --show-metadata`)
+
+| Source | Scope | Coverage | Records | Status |
+|---|---|---|---|---|
+| BTS TranStats: T-100 Segment (All Carriers) | nationwide | 2019-01-01 .. 2026-07-31 | 61,356 | ok |
+| BTS TranStats: Reporting Carrier On-Time Performance | nationwide | 2019-01-01 .. 2026-07-31 | 31,660 | ok |
+| OurAirports airports.csv | nationwide | n/a (reference) | 2,036 | ok |
+| Airport reference derived from BTS city/state fields | nationwide | 2025-08-01 .. 2026-07-31 (size bands) | 883 | ok |
+
+Table counts: airports 883; airport_monthly_traffic 61,356; airport_monthly_operations 31,660; route_monthly_metrics
+851,935; airport_scores 386; data_refresh_metadata 4.
+
+Key-airport coverage: ANC, BDL, BOS, BTV, LAX, MHT, PVD, PWM, SFO and SNA each have 91 traffic months and 91 operations
+months (2019-01 .. 2026-07). New England airports with both traffic and operations data: 14.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `.venv\Scripts\python.exe -m pytest -q` | 149 passed (148 existing + the new bound test) |
+| Four suggested questions, deterministic demo mode (`src.demo_router.DemoAgent`) against the new store | all answered, scope label now "nationwide" |
+
+Conclusions returned (12 months ending 2026-07 vs the prior 12 months):
+
+- New England expansion candidates: 10 airports met the coverage rule; strongest Expansion Opportunity Score signals
+  BGR (89.8), ORH (72.3), BOS (60.2); 4 airports excluded for insufficient coverage (3 in the demo-scope store).
+- LAX vs SNA congestion: SNA shows the higher operational pressure (delay rate 20.2% vs 20.2%, cancellation rate 1.07%
+  vs 0.94%); LAX handled more reported flights (190,106 vs 45,231), which by itself does not indicate congestion.
+- ANC long-haul share: 15.2% of departures (5,645 of 37,243) at the 2,000-mile threshold.
+- SFO capacity pressure: proxy 75.7/100 among 30 large airports; utilization 82.1% (p85), demand growth 0.6% (p78),
+  operational pressure 0.172 (p48); stated as a proxy, not measured unmet demand.
+
+The 12-month figures are identical to the demo-scope run because both stores contain the same latest months; the
+nationwide store adds 2019-01 .. 2022-12 for longer trend and pre-pandemic comparisons.

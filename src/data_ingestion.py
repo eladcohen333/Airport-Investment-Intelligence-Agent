@@ -67,7 +67,8 @@ OTP_TYPES = {
 
 SIZE_BAND_THRESHOLDS = {"large": 10_000_000, "medium": 2_500_000, "small": 500_000}   # annual origin passengers
 
-NATIONAL_MONTHLY_FLIGHTS_RANGE = (250_000, 900_000)
+# Lower bound admits the April-June 2020 COVID trough (reporting-carrier flights dropped to roughly 180k-220k per month).
+NATIONAL_MONTHLY_FLIGHTS_RANGE = (150_000, 900_000)
 AIRPORT_CODE_RE = re.compile(r"^[A-Z0-9]{3}$")
 USER_AGENT = "AirportInvestmentIntelligencePOC/0.1 (+local research tool)"
 
