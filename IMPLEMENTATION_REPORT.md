@@ -235,3 +235,32 @@ Conclusions returned (12 months ending 2026-07 vs the prior 12 months):
 
 The 12-month figures are identical to the demo-scope run because both stores contain the same latest months; the
 nationwide store adds 2019-01 .. 2022-12 for longer trend and pre-pandemic comparisons.
+
+## Prepared dataset distribution (2026-10-19)
+
+Goal: a reviewer clones the repository, downloads one prepared DuckDB asset from GitHub Releases and runs the app
+without the 1-2.5 GB BTS download. Real aggregated data only; nothing fabricated; raw files, live data and secrets never
+packaged. Scoring, ingestion and agent behaviour are unchanged; the only UI touch is the missing-database panel, which
+now also shows the download command.
+
+- `src/dataset_release.py`: validation with the project's helpers (`db.missing_tables`, `db.latest_refresh`,
+  `analytics.get_coverage`), SHA-256, manifest, packaging with self-check, archive inspection (exact two members, plain
+  names only, manifest/size consistency), verified extraction and atomic install, streaming download with pre-open
+  checksum verification.
+- `scripts/package_dataset_release.py` (`--db`, `--out-dir`, `--overwrite`) and `scripts/download_dataset_release.py`
+  (`--url`, `--sha256`, `--dest`, `--force`, `--timeout`, `--max-bytes`).
+- `docs/dataset-release.md` (manual release process), README quick start + accurate live-context wording,
+  `.gitignore` covers `dist/`, `*.zip`, `*.sha256`, `*.duckdb`, `*.partial`, `data/*.tmp`.
+
+Verification:
+
+| Command | Result |
+|---|---|
+| `python -m pytest -q` | 176 passed (25 new in `tests/test_dataset_release.py`) |
+| `python -m compileall -q src tests scripts app.py` | OK |
+| `python scripts/package_dataset_release.py --help` / `download_dataset_release.py --help` | exit 0 |
+| `python scripts/package_dataset_release.py` (real nationwide store) | `dist/airport_intelligence_nationwide_2019-01_to_2026-07.zip`, 20,213,549 bytes, sha256 `1a66a17b1fdbc92951e7c19933e574a0c0a606b7c1e7021ac2d1128a698d89ed`; DuckDB member 72,364,032 bytes, sha256 `e6db6d7887af90b9bca02924e8c25de214e1c8af222e7181697cb4bc45ec8f3b`; scope nationwide, coverage 2019-01-01 to 2026-07-31, refreshed 2026-10-19T12:22:07 UTC |
+| Loopback HTTP round trip of the real archive through the download script | installed byte-identical copy to a scratch path (exit 0); re-run without `--force` refused (exit 2); second package run without `--overwrite` refused (exit 2) |
+
+Not done (by design): no GitHub Release created, nothing uploaded, no commit or push. The README carries clearly
+marked `<RELEASE_ASSET_URL>` / `<RELEASE_ASSET_SHA256>` placeholders until the two files in `dist/` are uploaded by hand.

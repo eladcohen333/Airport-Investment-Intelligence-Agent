@@ -377,6 +377,9 @@ def render_turn(turn: AgentTurn, key_prefix: str = "turn") -> None:
 
 def render_missing_database(db_path: str) -> None:
     st.error("No historical database found. The application needs the aggregated DuckDB store before it can answer questions.")
+    st.markdown("**Fastest:** install the prepared dataset from the repository's GitHub Releases (aggregated tables only; see README).")
+    st.code("python scripts/download_dataset_release.py --url <release asset URL> --sha256 <digest from the .sha256 file>", language="bash")
+    st.markdown("**Or rebuild it locally** from public BTS data:")
     st.code(f"python scripts/refresh_data.py --scope demo        # ~25 minutes, writes {db_path}", language="bash")
     st.caption("The refresh downloads public BTS TranStats data (T-100 Segment and On-Time Performance) and aggregates it locally. No raw files are used at runtime.")
 

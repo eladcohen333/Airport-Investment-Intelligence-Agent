@@ -20,7 +20,9 @@ Browser
 ```
 
 Historical data is the only input to rankings and scores. Live data answers current-status questions only and is
-always shown in its own `Current Operational Context` section. The language model never computes a number: it
+always shown in its own `Current Operational Context` section. The historical store is either installed from a
+prepared GitHub Release asset (`scripts/download_dataset_release.py`) or rebuilt from BTS sources
+(`scripts/refresh_data.py`); `scripts/package_dataset_release.py` builds that asset from a validated local store. The language model never computes a number: it
 chooses a tool, passes validated parameters, and explains the tool result; a grounding guard checks that every
 figure in an answer appears in a tool result. See `docs/architecture.md`.
 
@@ -55,7 +57,44 @@ Edit `.env` and add any keys you have (all optional - the app starts without the
 Without an LLM key the sidebar shows **Demo / deterministic mode**: questions are routed by rules to the same
 tools, so the suggested questions and the supported question patterns work fully.
 
-## Refresh the historical data (required once)
+## Quick start with prepared historical data
+
+Recommended path for reviewers: no BTS downloads (1-2.5 GB) and no 25-60 minute refresh. The prepared dataset is the
+same aggregated DuckDB store that `scripts/refresh_data.py --scope nationwide` builds, distributed as one GitHub
+Release asset.
+
+1. Install dependencies (Setup above: create the venv, `pip install -r requirements.txt`, copy `.env.example` to `.env`).
+2. Download, verify and install the prepared dataset. The script streams the asset, checks its SHA-256 before opening
+   it, accepts only an archive holding exactly `airport_intelligence.duckdb` and `dataset_manifest.json`, validates the
+   database with the project's own helpers, and installs it atomically as `data/airport_intelligence.duckdb`:
+
+```bash
+.venv\Scripts\python.exe scripts/download_dataset_release.py --url <RELEASE_ASSET_URL> --sha256 <RELEASE_ASSET_SHA256>
+```
+
+3. Run the app:
+
+```bash
+.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+> **Placeholder - no Release asset has been published yet.** `<RELEASE_ASSET_URL>` and `<RELEASE_ASSET_SHA256>` above
+> are placeholders. Until a maintainer uploads the archive and replaces them (process in `docs/dataset-release.md`),
+> take the asset URL and the digest from the `.sha256` file on the repository's GitHub Releases page manually. The
+> asset is named after the data it holds, for example `airport_intelligence_nationwide_2019-01_to_2026-07.zip`.
+
+- The asset contains aggregated DuckDB tables only (`airports`, `airport_monthly_traffic`, `airport_monthly_operations`,
+  `route_monthly_metrics`, `airport_scores`, `data_refresh_metadata`). It contains no raw BTS ZIP/CSV files, no live
+  API data and no secrets.
+- The dataset's exact scope, date coverage and refresh timestamp are shown in the app header and sidebar, in
+  `dataset_manifest.json` inside the archive, and by `python scripts/refresh_data.py --show-metadata`.
+- An existing local database is never overwritten unless you pass `--force`.
+- A full local rebuild from BTS sources remains available (next section) and produces the same tables.
+- Never commit database files, `dist/` artifacts, raw data, `.env`, secrets or logs; `.gitignore` excludes them.
+
+## Rebuild the historical data locally from BTS sources
+
+Alternative to the quick start: build the same store yourself from public BTS TranStats data.
 
 ```bash
 .venv\Scripts\python.exe scripts/refresh_data.py --scope demo
@@ -150,8 +189,19 @@ Capacity Pressure Proxy  = 50% utilization percentile + 30% demand-growth percen
 - Which airports have growing passengers and worsening cancellations?
 - Follow-up: "Compare LAX and SNA congestion." then "What about 2024?"
 
-## Known live-data constraints
+## Optional live operational context
 
+Historical analysis and airport rankings run entirely from the local BTS-based DuckDB store and do not depend on a
+live API.
+
+When `AVIATIONSTACK_API_KEY` and network access are available, the application can request a current flight-status
+sample and display it separately from the historical investment signal.
+
+The live-provider adapter is covered by response and error-handling tests. End-to-end validation against Aviationstack
+was not performed in the corporate build environment because outbound access to the provider is blocked by network
+policy.
+
+- Live data never enters the historical tables and never affects a score or ranking.
 - Without `AVIATIONSTACK_API_KEY` the live tool returns an explicit `unavailable` state; historical analysis is unaffected.
 - Free Aviationstack plans have small monthly quotas; `usage_limit_reached` / `rate_limit_reached` are shown as
   unavailable with the provider's `Retry-After` when present.

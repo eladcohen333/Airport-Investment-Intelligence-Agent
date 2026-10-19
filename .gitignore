@@ -17,3 +17,12 @@ data/raw/
 
 # Runtime
 logs/
+
+# Dataset release artifacts (built locally by scripts/package_dataset_release.py; uploaded to GitHub Releases by hand)
+dist/
+*.zip
+*.zip.sha256
+*.duckdb
+*.duckdb.wal
+*.partial
+data/*.tmp

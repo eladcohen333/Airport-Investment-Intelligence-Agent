@@ -111,3 +111,13 @@ inputs with Pydantic and never raises. Tools: `resolve_airport`, `get_airport_pr
 | Live API failure | separate error state; historical unchanged |
 | Invalid follow-up | one concise clarification |
 | Internal error | safe message in the UI; details in `logs/app.log` |
+
+## Dataset distribution
+
+The aggregated store can be installed without running the refresh. `scripts/package_dataset_release.py` validates a
+local `data/airport_intelligence.duckdb` (all tables with rows, metadata present, every source `ok`, 24 months of
+coverage) and writes `dist/airport_intelligence_<scope>_<start>_to_<end>.zip` holding exactly the DuckDB file and a
+`dataset_manifest.json`, plus a `.sha256` file. `scripts/download_dataset_release.py` streams a published asset,
+verifies the checksum before opening it, rejects unsafe or unexpected archive members, validates the extracted
+database with the same helpers and installs it atomically. Shared logic lives in `src/dataset_release.py`; the manual
+publishing steps are in `docs/dataset-release.md`. Raw BTS files and live data are never part of the asset.
