@@ -69,7 +69,7 @@ Release asset.
    database with the project's own helpers, and installs it atomically as `data/airport_intelligence.duckdb`:
 
 ```bash
-.venv\Scripts\python.exe scripts/download_dataset_release.py --url <RELEASE_ASSET_URL> --sha256 <RELEASE_ASSET_SHA256>
+.venv\Scripts\python.exe scripts/download_dataset_release.py --url https://github.com/eladcohen333/Airport-Investment-Intelligence-Agent/releases/download/dataset-nationwide-2026-07/airport_intelligence_nationwide_2019-01_to_2026-07.zip --sha256 1a66a17b1fdbc92951e7c19933e574a0c0a606b7c1e7021ac2d1128a698d89ed
 ```
 
 3. Run the app:
@@ -78,10 +78,10 @@ Release asset.
 .venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-> **Placeholder - no Release asset has been published yet.** `<RELEASE_ASSET_URL>` and `<RELEASE_ASSET_SHA256>` above
-> are placeholders. Until a maintainer uploads the archive and replaces them (process in `docs/dataset-release.md`),
-> take the asset URL and the digest from the `.sha256` file on the repository's GitHub Releases page manually. The
-> asset is named after the data it holds, for example `airport_intelligence_nationwide_2019-01_to_2026-07.zip`.
+> **Current asset:** Release `dataset-nationwide-2026-07` holds `airport_intelligence_nationwide_2019-01_to_2026-07.zip`
+> (nationwide scope, 2019-01 to 2026-07, refreshed 2026-10-19 12:22 UTC, 19.3 MiB) and its `.sha256` file. The digest
+> above is the ZIP's SHA-256; the script refuses anything that does not match it. Newer assets are published by the
+> process in `docs/dataset-release.md`; the asset name always encodes the scope and coverage it holds.
 
 - The asset contains aggregated DuckDB tables only (`airports`, `airport_monthly_traffic`, `airport_monthly_operations`,
   `route_monthly_metrics`, `airport_scores`, `data_refresh_metadata`). It contains no raw BTS ZIP/CSV files, no live
