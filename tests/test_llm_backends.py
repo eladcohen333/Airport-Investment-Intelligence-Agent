@@ -85,7 +85,7 @@ def test_gemini_render_contents_and_declarations():
 
     backend = lb.GeminiBackend(api_key="k", model="gemini-3.8-flash", client=SimpleNamespace(models=_FakeModels(None)))
     contents = backend.render_contents(HISTORY)
-    assert [c.role for c in contents] == ["user", "model", "tool", "user"]
+    assert [c.role for c in contents] == ["user", "model", "user", "user"]      # function responses use the user role
     assert contents[1].parts[0].text == "Let me check." and contents[1].parts[1].function_call.name == "compare_airports"
     fr = contents[2].parts[0].function_response
     assert fr.name == "compare_airports" and fr.response["status"] == "ok"

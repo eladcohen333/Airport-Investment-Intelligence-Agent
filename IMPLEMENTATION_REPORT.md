@@ -90,7 +90,7 @@ Verification (real public data, this environment):
 | LAX/SNA then "What about 2024?" reuses LAX and SNA and changes only the period | pass (`test_follow_up_reuses_airports_and_changes_period`) |
 | no tool result => no numeric answer | pass (`test_no_tool_result_means_no_numeric_answer`) |
 | demo mode without a key routes all nine required/also-support questions | pass |
-| live LLM tool-calling smoke test | pending user key: run `python scripts/smoke_llm.py` after adding `GEMINI_API_KEY` (or `ANTHROPIC_API_KEY`) to `.env` |
+| live LLM tool-calling smoke test | **executed later with a Gemini key** (`python scripts/smoke_llm.py`, model gemini-3.8-flash, nationwide store): all four required questions plus the LAX/SNA -> "What about 2024?" follow-up answered through the correct tools (`rank_airports`, `compare_airports`, `analyze_route_mix`, `analyze_capacity_pressure`), `SMOKE OK`. Two fixes came out of it: function responses must use the `user` role (the API rejects `tool`), and the free tier's 5 requests/minute quota is now handled by a short wait-and-retry. |
 | `python -m pytest -q` | 148 passed |
 
 ### Phase 6 - Live API provider

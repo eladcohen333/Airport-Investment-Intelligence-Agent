@@ -7,12 +7,25 @@ Gemini key is available. Neither backend ever computes a metric.
 from __future__ import annotations
 
 import json
+import re
+import time
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol
 
 from src.config import Settings, get_logger, resolve_provider
 
 log = get_logger("llm")
+
+
+def _retry_delay_seconds(message: str) -> Optional[float]:
+    """Parse 'Please retry in 36.8s' style hints from provider errors; default 20 s when the hint is absent."""
+    m = re.search(r"retry in\s+([0-9.]+)\s*s", message, re.I)
+    if m:
+        try:
+            return float(m.group(1)) + 1.0
+        except ValueError:
+            return 20.0
+    return 20.0
 
 
 @dataclass
@@ -141,10 +154,13 @@ class AnthropicBackend:
 class GeminiBackend:
     name = "gemini"
 
-    def __init__(self, api_key: Optional[str], model: str, client: Any = None, temperature: float = 0.0, max_output_tokens: int = 4000):
+    def __init__(self, api_key: Optional[str], model: str, client: Any = None, temperature: float = 0.0, max_output_tokens: int = 4000,
+                 max_rate_limit_retries: int = 2, max_rate_limit_wait: float = 70.0):
         self.model = model
         self.temperature = temperature
         self.max_output_tokens = max_output_tokens
+        self.max_rate_limit_retries = max_rate_limit_retries
+        self.max_rate_limit_wait = max_rate_limit_wait
         if client is None:
             from google import genai
 
@@ -183,7 +199,8 @@ class GeminiBackend:
                     if not isinstance(payload, dict):
                         payload = {"result": payload}
                     parts.append(types.Part.from_function_response(name=r["name"], response=payload))
-                contents.append(types.Content(role="tool", parts=parts))
+                # function responses travel in a user-role content (the API rejects a 'tool' role)
+                contents.append(types.Content(role="user", parts=parts))
         return contents
 
     def _declarations(self, tools: list[dict[str, Any]]) -> list[Any]:
@@ -207,17 +224,28 @@ class GeminiBackend:
         }
         if tools:
             config_kwargs["tools"] = [types.Tool(function_declarations=self._declarations(tools))]
-        try:
-            resp = self.client.models.generate_content(model=self.model, contents=self.render_contents(history),
-                                                       config=types.GenerateContentConfig(**config_kwargs))
-        except Exception as exc:  # the google-genai SDK raises a family of ClientError/ServerError types
-            name = type(exc).__name__
-            msg = str(exc)
-            if "401" in msg or "403" in msg or "API key" in msg or "PERMISSION_DENIED" in msg:
-                raise BackendError("The Gemini API key was rejected.", kind="auth") from exc
-            if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
-                raise BackendError("Gemini rate limit or quota reached; try again shortly.", retryable=True, kind="rate_limit") from exc
-            raise BackendError(f"Gemini API error ({name}).", retryable="5" == msg[:1], kind="api") from exc
+        contents = self.render_contents(history)
+        config = types.GenerateContentConfig(**config_kwargs)
+        attempt = 0
+        while True:
+            try:
+                resp = self.client.models.generate_content(model=self.model, contents=contents, config=config)
+                break
+            except Exception as exc:  # the google-genai SDK raises a family of ClientError/ServerError types
+                name = type(exc).__name__
+                msg = str(exc)
+                if "401" in msg or "403" in msg or "API key" in msg or "PERMISSION_DENIED" in msg:
+                    raise BackendError("The Gemini API key was rejected.", kind="auth") from exc
+                if "429" in msg or "RESOURCE_EXHAUSTED" in msg:
+                    delay = _retry_delay_seconds(msg)
+                    if attempt < self.max_rate_limit_retries and delay is not None and delay <= self.max_rate_limit_wait:
+                        attempt += 1
+                        log.warning("Gemini quota hit (free tier); waiting %.0fs before retry %s/%s", delay, attempt, self.max_rate_limit_retries)
+                        time.sleep(delay)
+                        continue
+                    raise BackendError("Gemini rate limit or quota reached; try again shortly.", retryable=True, kind="rate_limit") from exc
+                log.warning("Gemini API error %s: %s", name, msg[:600])
+                raise BackendError(f"Gemini API error ({name}).", retryable=msg[:1] == "5", kind="api") from exc
         return self.parse_response(resp)
 
     def parse_response(self, resp: Any) -> BackendResponse:
