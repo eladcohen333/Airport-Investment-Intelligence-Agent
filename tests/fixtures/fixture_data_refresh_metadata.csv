@@ -1,0 +1,4 @@
+source,data_scope,coverage_start,coverage_end,refreshed_at,record_count,status,notes
+FIXTURE synthetic T-100-shaped traffic,demo,2023-01-01,2025-12-31,2026-10-01T00:00:00,755,ok,fixture
+FIXTURE synthetic OTP-shaped operations,demo,2023-01-01,2026-02-28,2026-10-01T00:00:00,798,ok,fixture
+FIXTURE synthetic T-100-shaped routes,demo,2023-01-01,2025-12-31,2026-10-01T00:00:00,468,ok,fixture
