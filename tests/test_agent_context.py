@@ -158,7 +158,8 @@ def test_extract_numbers_and_grounding(demo, tool_ctx, defaults):
     warnings = ag.grounding_warnings("SNA cancellation rate is 7.77%.", results)
     assert warnings and "7.77" in warnings[0]
     # rounding to significant figures is fine, a misquoted score is not
-    assert ag.grounding_warnings("LAX handled about 240 thousand flights and 30 million passengers.", results) == []
+    assert ag.grounding_warnings("LAX handled about 240 thousand flights and 31.8 million passengers.", results) == []
+    assert ag.grounding_warnings("LAX handled about 30 million passengers.", results)     # 31.8M -> 30M is too loose
     assert ag.grounding_warnings("LAX delay rate was 19.4%.", results)          # tool says 20.0
 
 
