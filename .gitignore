@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# Secrets
+.env
+.streamlit/secrets.toml
+
+# Local data (rebuilt by scripts/refresh_data.py)
+data/*.duckdb
+data/*.duckdb.tmp
+data/*.duckdb.wal
+data/raw/
+
+# Runtime
+logs/
