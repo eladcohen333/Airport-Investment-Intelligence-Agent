@@ -16,6 +16,22 @@ from src.models import LiveContext
 
 log = get_logger("live")
 
+
+def _use_system_trust_store() -> bool:
+    """Verify TLS against the operating-system certificate store (same approach as the BTS refresh).
+
+    `requests` ships certifi's CA bundle; on managed Windows machines behind TLS inspection the inspection root is
+    only in the Windows store, so the live call fails with SSLError. `truststore` fixes that without disabling
+    verification. Alternatively set REQUESTS_CA_BUNDLE / SSL_CERT_FILE to a bundle that includes the root.
+    """
+    try:
+        import truststore  # type: ignore
+
+        truststore.inject_into_ssl()
+        return True
+    except Exception:  # pragma: no cover - optional dependency
+        return False
+
 DELAY_THRESHOLD_MINUTES = 15
 DEFAULT_LIMIT = 100
 
@@ -79,6 +95,8 @@ class AviationstackProvider:
                  session: Optional[requests.Session] = None, timeout: float = 10.0, limit: int = DEFAULT_LIMIT):
         self.api_key = api_key or None
         self.base_url = base_url.rstrip("/")
+        if session is None:
+            _use_system_trust_store()
         self.session = session or requests.Session()
         self.timeout = timeout
         self.limit = limit

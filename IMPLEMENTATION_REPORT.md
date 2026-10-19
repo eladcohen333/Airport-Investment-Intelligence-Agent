@@ -264,3 +264,20 @@ Verification:
 
 Not done (by design): no GitHub Release created, nothing uploaded, no commit or push. The README carries clearly
 marked `<RELEASE_ASSET_URL>` / `<RELEASE_ASSET_SHA256>` placeholders until the two files in `dist/` are uploaded by hand.
+
+## Submission screenshots and live API validation (2026-10-19)
+
+- `scripts/capture_screenshots.py` (Playwright on the installed Chrome, headless, 2x scale) types the questions into
+  the running app and saves full-length PNGs under `docs/screenshots/`. Nothing is mocked.
+- Live provider: the first end-to-end call failed with `SSLError` behind corporate TLS inspection because
+  `src/live_provider.py` built a plain `requests.Session`. It now verifies TLS through the system trust store
+  (`truststore`), exactly like the BTS refresh; live-provider tests unchanged and passing.
+- `python scripts/smoke_live.py LAX`: `provider=aviationstack status=ok`, `retrieved_at=2026-10-19T19:21:30+00:00`,
+  100 flights sampled (46 delayed 15+ min, 0 cancelled) out of 4,565 matching.
+
+| Screenshot | Content |
+|---|---|
+| `01_live_status_lax.png` | live toggle on; Aviationstack `/v1/flights` sample retrieved 2026-10-19T19:22:14Z under `Current Operational Context`, historical signal untouched |
+| `02_new_england_ranking_methodology.png` | New England ranking (BGR, ORH, BOS, BTV, ACK) with `How this was calculated` open: peer group of 10, formula, winsorization bounds, 4 exclusions |
+| `03_followup_context_2024.png` | LAX vs SNA congestion, then `What about 2024?` answered as calendar 2024 vs 2023 for the same pair |
+| `04_sfo_capacity_pressure_proxy.png` | SFO capacity-pressure proxy 75.1/100 with component percentiles and the "not measured unmet demand" limitation |

@@ -176,6 +176,18 @@ Capacity Pressure Proxy  = 50% utilization percentile + 30% demand-growth percen
 - Seasonal airports can pass the flight-count rule with fewer than 12 reporting months; their rows carry lower confidence.
 - The live sample is one page of the provider's feed (up to 100 departures) and is not comparable to historical rates.
 
+## Screenshots
+
+Real answers captured from the running app against the nationwide store (refreshed 2026-10-19) with
+`python scripts/capture_screenshots.py` (Playwright driving the installed Chrome; nothing is mocked).
+
+| File | What it shows |
+|---|---|
+| `docs/screenshots/01_live_status_lax.png` | `Include live context` on, `What is the current operational status at LAX?`: a real Aviationstack `/v1/flights` call (retrieved 2026-10-19T19:22:14Z, 100 sampled departures, 46 delayed 15+ min) rendered under `Current Operational Context`, separate from the historical signal |
+| `docs/screenshots/02_new_england_ranking_methodology.png` | New England expansion ranking with the `How this was calculated` panel open: tool, peer group, formula, winsorization bounds, exclusions |
+| `docs/screenshots/03_followup_context_2024.png` | `Compare LAX and Santa Ana Airport, SNA, congestion levels.` followed by `What about 2024?`: the follow-up reuses the comparison set and switches the period to calendar 2024 vs 2023 |
+| `docs/screenshots/04_sfo_capacity_pressure_proxy.png` | `What is the capacity-pressure signal at SFO and why?`: the indirect proxy (50/30/20 percentile weights) with its stated assumptions and the "not measured unmet demand" limitation |
+
 ## Sample questions
 
 - Which airports in New England are strong candidates for terminal expansion?
@@ -198,8 +210,10 @@ When `AVIATIONSTACK_API_KEY` and network access are available, the application c
 sample and display it separately from the historical investment signal.
 
 The live-provider adapter is covered by response and error-handling tests. End-to-end validation against Aviationstack
-was not performed in the corporate build environment because outbound access to the provider is blocked by network
-policy.
+was performed on 2026-10-19 from the build environment (`scripts/smoke_live.py LAX` returned `status=ok` with a
+100-departure sample; see `docs/screenshots/01_live_status_lax.png`). On managed Windows machines behind TLS
+inspection the adapter verifies certificates through the operating-system trust store (`truststore`), the same
+mechanism the BTS refresh uses; without it the call fails with `SSLError` rather than returning data.
 
 - Live data never enters the historical tables and never affects a score or ranking.
 - Without `AVIATIONSTACK_API_KEY` the live tool returns an explicit `unavailable` state; historical analysis is unaffected.
@@ -209,8 +223,11 @@ policy.
 
 ## Troubleshooting (Windows / corporate networks)
 
-- TLS inspection: `requests` uses certifi's CA bundle, which may not include your organization's root. The refresh
-  uses `truststore` (Windows certificate store) automatically; alternatively set `REQUESTS_CA_BUNDLE` to a bundle that
-  includes the root. `curl` may need `--ssl-no-revoke` on such networks.
+- TLS inspection: `requests` uses certifi's CA bundle, which may not include your organization's root. The refresh,
+  the live provider and the dataset download script use `truststore` (Windows certificate store) automatically;
+  alternatively set `REQUESTS_CA_BUNDLE` to a bundle that includes the root. `curl` may need `--ssl-no-revoke` on such
+  networks.
+- Screenshots: `python scripts/capture_screenshots.py` needs `pip install playwright` (dev-only, not in
+  `requirements.txt`) and drives the installed Chrome or Edge; no browser download.
 - `python` on PATH older than 3.11: create the venv with `py -3.11 -m venv .venv` or the full interpreter path.
 - Logs: `logs/app.log` (application), `logs/refresh_demo.log` (if you redirect the refresh output there).
