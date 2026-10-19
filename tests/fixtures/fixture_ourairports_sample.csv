@@ -1,0 +1,7 @@
+"id","ident","type","name","latitude_deg","longitude_deg","elevation_ft","continent","iso_country","iso_region","municipality","scheduled_service","icao_code","iata_code","gps_code","local_code","home_link","wikipedia_link","keywords"
+3632,"KLAX","large_airport","Los Angeles International Airport",33.942501,-118.407997,125,"NA","US","US-CA","Los Angeles","yes","KLAX","LAX","KLAX","LAX","","",""
+3735,"KSNA","medium_airport","John Wayne Airport-Orange County Airport",33.675701,-117.867996,56,"NA","US","US-CA","Santa Ana","yes","KSNA","SNA","KSNA","SNA","","",""
+3774,"PANC","large_airport","Ted Stevens Anchorage International Airport",61.1744,-149.996002,152,"NA","US","US-AK","Anchorage","yes","PANC","ANC","PANC","ANC","","",""
+3422,"KBOS","large_airport","Logan International Airport",42.3643,-71.005203,20,"NA","US","US-MA","Boston","yes","KBOS","BOS","KBOS","BOS","","",""
+99901,"XDUP","small_airport","Duplicate Code Strip",40.0,-100.0,1000,"NA","US","US-NE","Nowhere","no","","BOS","","","","",""
+2434,"EGLL","large_airport","London Heathrow Airport",51.4706,-0.461941,83,"EU","GB","GB-ENG","London","yes","EGLL","LHR","EGLL","","","",""

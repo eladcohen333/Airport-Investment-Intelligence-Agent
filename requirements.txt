@@ -8,3 +8,4 @@ google-genai>=2.31,<3
 python-dotenv>=1.1,<2
 requests>=2.32,<3
 pytest>=8.4
+truststore>=0.9
