@@ -19,6 +19,7 @@ from src.models import NEW_ENGLAND_STATES, REGIONS, AirportRef, ResolveResult
 # --------------------------------------------------------------------------------------
 CURATED_ALIASES: dict[str, str] = {
     "los angeles airport": "LAX", "los angeles": "LAX", "los angeles international": "LAX", "lax airport": "LAX",
+    "la": "LAX", "l a": "LAX",  # "LA" / "L.A." as written in the brief; "in LA" is still parsed as Louisiana by parse_geo
     "santa ana airport": "SNA", "santa ana": "SNA", "john wayne": "SNA", "john wayne airport": "SNA", "orange county": "SNA",
     "orange county airport": "SNA",
     "anchorage airport": "ANC", "anchorage": "ANC", "ted stevens": "ANC", "ted stevens anchorage": "ANC",
@@ -53,6 +54,8 @@ CURATED_ALIASES: dict[str, str] = {
 
 STOPWORDS = {"international", "intl", "airport", "regional", "municipal", "field", "metropolitan", "national", "airfield",
              "airpark", "county", "memorial", "the", "of", "at"}
+# Short metro shorthands accepted inside free text only when written in capitals ("LA", "L.A."), never as lower-case words.
+SHORT_ALIASES = {"la", "l a"}
 
 US_STATES: dict[str, str] = {
     "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR", "california": "CA", "colorado": "CO",
@@ -117,11 +120,12 @@ def generate_aliases(code: str, name: str, city: str, state: str, curated: Optio
             out.add(stripped)
         for part in re.split(r"[-/()]", name):
             p = normalize(part)
-            if p:
-                out.add(p)
-                ps = _strip_stopwords(p)
-                if ps and len(ps) >= 4:
-                    out.add(ps)
+            ps = _strip_stopwords(p) if p else ""
+            if not ps:
+                continue  # parts made only of generic words ("Airport", "Regional") must never become aliases
+            out.add(p)
+            if len(ps) >= 4:
+                out.add(ps)
     ncity = normalize(city)
     if ncity:
         out.add(ncity)
@@ -159,7 +163,10 @@ class AirportResolver:
             aliases = set(aliases_by_code.get(code, []) if aliases_by_code else [])
             aliases |= set(generate_aliases(code, ref.airport_name, ref.city, ref.state))
             for alias in aliases:
-                self.alias_index.setdefault(normalize(alias), set()).add(code)
+                na = normalize(alias)
+                if not na or not _strip_stopwords(na):
+                    continue  # stores built by older refreshes hold bare "airport" aliases; never index generic words
+                self.alias_index.setdefault(na, set()).add(code)
             ncity = normalize(ref.city)
             if ncity:
                 self.city_index.setdefault(ncity, set()).add(code)
@@ -287,8 +294,11 @@ class AirportResolver:
                 start, end = tokens[i][1], tokens[i + n - 1][2]
                 if covered(start, end):
                     continue
-                phrase = normalize(text[start:end])
-                if not phrase or (n == 1 and len(phrase) < 4):
+                raw_phrase = text[start:end]
+                phrase = normalize(raw_phrase)
+                if not phrase:
+                    continue
+                if n == 1 and len(phrase) < 4 and not (phrase in SHORT_ALIASES and raw_phrase.isupper()):
                     continue
                 hits = self._alias_lookup(phrase) or (set(self.city_index[phrase]) if phrase in self.city_index else set())
                 if hits:
@@ -397,6 +407,6 @@ def describe_states(states: Optional[Iterable[str]]) -> str:
 
 
 __all__ = [
-    "AirportResolver", "CURATED_ALIASES", "US_STATES", "STATE_NAMES", "NEW_ENGLAND_STATES", "generate_aliases", "normalize",
+    "AirportResolver", "CURATED_ALIASES", "SHORT_ALIASES", "STOPWORDS", "US_STATES", "STATE_NAMES", "NEW_ENGLAND_STATES", "generate_aliases", "normalize",
     "parse_geo", "parse_size_words", "region_states", "describe_states", "GeoParse",
 ]

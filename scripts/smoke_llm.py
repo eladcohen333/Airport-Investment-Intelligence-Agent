@@ -1,10 +1,10 @@
 """Live LLM tool-calling smoke test.
 
-Runs the required assignment questions (plus one follow-up) through the active LLM backend against the local
-DuckDB store and prints which tools were called and the conclusions. Needs ANTHROPIC_API_KEY or GEMINI_API_KEY in
-the environment / .env and a refreshed database.
+Runs the suggested questions, the brief's verbatim questions and one follow-up through the active LLM backend
+against the local DuckDB store and prints which tools were called and the conclusions. Needs ANTHROPIC_API_KEY or
+GEMINI_API_KEY in the environment / .env and a refreshed database.
 
-Usage: python scripts/smoke_llm.py [--questions N] [--provider auto|anthropic|gemini]
+Usage: python scripts/smoke_llm.py [--questions N] [--exam-only] [--provider auto|anthropic|gemini]
 Exit code 0 when every question produced an answer or clarification grounded in tool calls.
 """
 from __future__ import annotations
@@ -27,6 +27,13 @@ from src.live_provider import build_live_provider  # noqa: E402
 from src.models import RunDefaults, SessionContext  # noqa: E402
 from src.tools import build_tool_context  # noqa: E402
 
+# The assignment's wording as written in the brief; SUGGESTED_QUESTIONS are the code-friendly rephrasings shown in the UI.
+EXAM_QUESTIONS = (
+    "Which airports in New England are strong candidates for terminal expansion?",
+    "Compare LA and Santa Ana airport congestion levels.",
+    "What is the percentage of long haul flights out of Anchorage airport?",
+    "What is the unmet flight demand in SFO airport and why?",
+)
 FOLLOW_UP = ("Compare LAX and SNA congestion.", "What about 2024?")
 
 
@@ -34,6 +41,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--questions", type=int, default=len(SUGGESTED_QUESTIONS))
     ap.add_argument("--provider", default=None, help="override LLM_PROVIDER for this run")
+    ap.add_argument("--exam-only", action="store_true", help="run only the brief's verbatim questions plus the follow-up (fewer API calls)")
     args = ap.parse_args()
     if args.provider:
         os.environ["LLM_PROVIDER"] = args.provider
@@ -53,7 +61,8 @@ def main() -> int:
     tool_ctx = build_tool_context(conn, defaults, live_provider=build_live_provider(settings.aviationstack_api_key, settings.aviationstack_base_url))
     failures = 0
     ctx = SessionContext()
-    questions = list(SUGGESTED_QUESTIONS[: args.questions]) + list(FOLLOW_UP)
+    suggested = [] if args.exam_only else list(SUGGESTED_QUESTIONS[: args.questions])
+    questions = suggested + list(EXAM_QUESTIONS) + list(FOLLOW_UP)
     for q in questions:
         t0 = time.time()
         turn = bundle.agent.run(q, ctx, defaults, tool_ctx)

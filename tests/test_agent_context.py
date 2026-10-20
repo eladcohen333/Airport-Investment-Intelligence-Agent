@@ -52,6 +52,10 @@ def route(question, tool_ctx, defaults, ctx=None):
         ("Which airports have growing passengers and worsening cancellations?", "rank_airports", {"sort_by": "demand_growth"}),
         ("How is the expansion opportunity score calculated?", "get_methodology", {"topic": "expansion_opportunity_score"}),
         ("What share of ANC departures are long-haul at 1,500 miles?", "analyze_route_mix", {"airport": "ANC", "long_haul_threshold_miles": 1500}),
+        # the brief's verbatim wording must route exactly like the code-friendly suggested questions
+        ("Compare LA and Santa Ana airport congestion levels.", "compare_airports", {"airports": ["LAX", "SNA"]}),
+        ("What is the percentage of long haul flights out of Anchorage airport?", "analyze_route_mix", {"airport": "ANC"}),
+        ("What is the unmet flight demand in SFO airport and why?", "analyze_capacity_pressure", {"airport": "SFO"}),
     ],
 )
 def test_router_maps_questions_to_tools(question, tool, checks, tool_ctx, defaults):

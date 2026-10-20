@@ -281,3 +281,45 @@ marked `<RELEASE_ASSET_URL>` / `<RELEASE_ASSET_SHA256>` placeholders until the t
 | `02_new_england_ranking_methodology.png` | New England ranking (BGR, ORH, BOS, BTV, ACK) with `How this was calculated` open: peer group of 10, formula, winsorization bounds, 4 exclusions |
 | `03_followup_context_2024.png` | LAX vs SNA congestion, then `What about 2024?` answered as calendar 2024 vs 2023 for the same pair |
 | `04_sfo_capacity_pressure_proxy.png` | SFO capacity-pressure proxy 75.1/100 with component percentiles and the "not measured unmet demand" limitation |
+
+## Requirements audit against the brief (2026-10-20)
+
+Each requirement of the assignment was checked against the code and against the real nationwide store. All mandatory
+requirements are met; the voice bonus is not implemented. The audit found two routing defects that only showed with the
+brief's exact wording in Demo / deterministic mode, and the design document was replaced by a version with explicit
+"Scoring methodology", "Where and how AI is used" and "Key tradeoffs" sections (`docs/architecture.md`, with the new
+reviewer-oriented `README.md`).
+
+| Requirement | Status | Where |
+|---|---|---|
+| Public APIs / public aviation data | met | BTS T-100 and On-Time (public downloads), OurAirports, Aviationstack REST (`src/live_provider.py`) |
+| Rank or compare airports on a defined KPI | met | `rank_airports`, `compare_airports` (`src/tools.py`); formulas in `src/scoring.py` |
+| Explain reasoning | met | conclusion + evidence bullets, "How this was calculated" panel |
+| Conversational follow-ups | met | `SessionContext` / `update_context` (`src/agent.py`); tested |
+| Deterministic scoring, not only LLM output | met | pure-math `src/scoring.py`; the model never computes a number; grounding guard |
+| Chat interface (voice bonus) | met (voice: not implemented) | Streamlit chat (`app.py`) |
+| Assumptions, uncertainty, scoping | met | confidence levels, limitations panel, proxy disclaimer, header scope note |
+| Source code + short design document | met | repository; `docs/architecture.md` sections 3-5 |
+
+### Defects found with the brief's verbatim wording (Demo mode, before the fix)
+
+| Question as written in the brief | Behaviour before | Root cause |
+|---|---|---|
+| Compare LA and Santa Ana airport congestion levels. | clarification "Compare SNA with which other airport?" | `extract_airports` skipped single tokens shorter than 4 characters, and "LA" had no alias |
+| What is the unmet flight demand in SFO airport and why? | **wrong tool**: `compare_airports(SFO, MGM)` | (a) the capacity-pressure pattern matched only the literal "unmet demand"; (b) `generate_aliases` split names on `-/()` and stored the bare part "airport" as an alias of MGM, DUT and IRC, so the word "airport" resolved to Montgomery (city-dominance rule) and the question looked like a two-airport comparison |
+
+Fixes (`src/airport_resolver.py`, `src/demo_router.py`): alias parts made only of generic words are no longer generated, and
+any stored alias that is only generic words is ignored when the resolver loads (this also repairs the already-installed
+store and the published release asset without re-publishing); `LA` / `L.A.` resolve to LAX when written in capitals,
+while `in LA` still parses as Louisiana; the capacity-pressure pattern accepts `unmet <word> <word> demand`.
+`scripts/smoke_llm.py` now also runs the four verbatim questions (`--exam-only` runs just those).
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `python -m pytest -q` | 182 passed (176 existing + 3 resolver tests + the 3 verbatim questions in the router parametrization) |
+| `python -m compileall -q src tests scripts app.py` | OK |
+| Four verbatim questions + "What about 2024?" in Demo mode against the nationwide store | LA/Santa Ana -> `compare_airports` [LAX, SNA]; Anchorage -> `analyze_route_mix` ANC 15.2%; unmet flight demand SFO -> `analyze_capacity_pressure` 75.7/100; New England -> `rank_airports` (BGR 89.8, ORH 72.3, BOS 60.2); follow-up reuses LAX/SNA for calendar 2024 vs 2023 |
+| `python scripts/smoke_llm.py --exam-only` (Gemini, gemini-3.8-flash with quota fallback to 3.6-flash) | `SMOKE OK`: the same four tools chosen for the verbatim questions; follow-up kept LAX/SNA and set `period.year=2024`; free-tier quota waits made the first four answers take 2-3 minutes each |
+| Running app (Streamlit, Gemini mode), the two previously failing questions typed verbatim | "Compare LA and Santa Ana airport congestion levels." -> LAX vs SNA comparison (SNA higher by rates: cancellation 1.07% vs 0.94%; delay rate 20.2% both), table, chart, methodology panel, confidence high; "What is the unmet flight demand in SFO airport and why?" -> Capacity Pressure Proxy 75.7/100 among 30 large hubs (utilization p85 -> 42.5 pts, growth p78 -> 23.5 pts, pressure p48 -> 9.7 pts) with the "not measured unmet demand" disclaimer; no stack traces |

@@ -91,7 +91,7 @@ Each turn allows **four iterations and six tool calls**. Structured session cont
 
 The prompt requires tool-supported figures and caveats. A numeric check permits rounding and flags unmatched figures. Numeric answers without tool calls become clarifications; unmatched figures after tool calls remain visible with warnings. This is not a semantic correctness guarantee.
 
-Without a key, the Demo router handles supported patterns through the same tools. LLM failures fall back to deterministic routing/summaries with a notice. Live failures are reported separately; historical analysis continues.
+Without a key, the Demo router handles supported patterns through the same tools, including the brief's verbatim wording (`LA` resolves to LAX; `unmet flight demand` maps to the Capacity Pressure Proxy); phrasings outside those patterns receive a clarification question rather than a guessed answer. LLM failures fall back to deterministic routing/summaries with a notice. Live failures are reported separately; historical analysis continues.
 
 ## 5. Key tradeoffs
 
@@ -108,4 +108,4 @@ Without a key, the Demo router handles supported patterns through the same tools
 
 Tests cover formulas, coverage, airport resolution, follow-ups, provider failures and dataset installation. Separate smoke scripts exercise the UI, LLM and live API; [screenshots](screenshots/) capture representative runs. Commands are in the [README](../README.md).
 
-Implementation references: [`scoring.py`](../src/scoring.py), [`tools.py`](../src/tools.py), [`agent.py`](../src/agent.py); reviewed at [revision 0dbaba3](https://github.com/eladcohen333/Airport-Investment-Intelligence-Agent/commit/0dbaba3e7203fde955ac85ae88466c67bdf3cf25), 19 October 2026.
+Implementation references: [`scoring.py`](../src/scoring.py), [`tools.py`](../src/tools.py), [`agent.py`](../src/agent.py), [`demo_router.py`](../src/demo_router.py), [`airport_resolver.py`](../src/airport_resolver.py); last reviewed against `main` on 20 October 2026 (see the requirements audit in [IMPLEMENTATION_REPORT.md](../IMPLEMENTATION_REPORT.md)).

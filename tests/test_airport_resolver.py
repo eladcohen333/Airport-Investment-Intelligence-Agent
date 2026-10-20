@@ -115,6 +115,37 @@ def test_parse_size_words():
     assert ar.parse_size_words("Compare LAX and SNA")[0] is None
 
 
+def test_generic_name_parts_never_become_aliases():
+    # "Montgomery Regional (Dannelly Field) Airport" splits on the parentheses into a bare " Airport" part
+    mgm = ar.generate_aliases("MGM", "Montgomery Regional (Dannelly Field) Airport", "Montgomery", "AL")
+    assert "airport" not in mgm and "dannelly field" in mgm and "montgomery" in mgm
+    assert "international airport" not in ar.generate_aliases("ZZZ", "Zed City (International Airport)", "Zed City", "ZZ")
+
+
+def test_stored_generic_aliases_are_ignored_at_load_time():
+    # stores built by earlier refreshes already hold the bare "airport" alias; the resolver must not index it
+    mgm = AirportRef(airport_code="MGM", airport_name="Montgomery Regional (Dannelly Field) Airport", city="Montgomery", state="AL", latest_12m_passengers=900_000)
+    sfo = AirportRef(airport_code="SFO", airport_name="San Francisco International Airport", city="San Francisco", state="CA", latest_12m_passengers=25_000_000)
+    r = ar.AirportResolver([mgm, sfo], {"MGM": ["airport", "montgomery", "mgm"]})
+    assert r.resolve("airport").status == "unknown"
+    found = r.extract_airports("What is the unmet flight demand in SFO airport and why?")
+    assert [x.airport.airport_code for x in found] == ["SFO"]
+
+
+def test_brief_wording_la_and_santa_ana(resolver):
+    found = resolver.extract_airports("Compare LA and Santa Ana airport congestion levels.")
+    assert [r.airport.airport_code for r in found] == ["LAX", "SNA"]
+    found = resolver.extract_airports("Compare L.A. and SNA.")
+    assert [r.airport.airport_code for r in found] == ["LAX", "SNA"]
+    assert resolver.resolve("LA").airport.airport_code == "LAX"
+    # lower-case "la" is an ordinary word, and "in LA" is the state of Louisiana (excluded span), not an airport
+    assert resolver.extract_airports("the la brea area") == []
+    text = "Which airports in LA have the strongest growth?"
+    geo = ar.parse_geo(text)
+    assert geo.states == ["LA"]
+    assert resolver.extract_airports(text, geo.spans) == []
+
+
 def test_generate_aliases_and_normalize():
     aliases = ar.generate_aliases("STL", "St. Louis Lambert International Airport", "St. Louis", "MO")
     assert "saint louis" in aliases and "saint louis lambert" in aliases and "stl airport" in aliases and "lambert" in aliases

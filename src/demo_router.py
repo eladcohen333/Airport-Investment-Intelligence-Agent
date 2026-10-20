@@ -80,7 +80,7 @@ METRIC_HINTS: list[tuple[str, str]] = [
     (r"\b(expansion|candidates?|invest\w*|opportunit\w*|terminal)\b", "expansion_opportunity_score"),
 ]
 METHODOLOGY_TOPICS: list[tuple[str, str]] = [
-    (r"capacity[- ]pressure|unmet demand", "capacity_pressure_proxy"),
+    (r"capacity[- ]pressure|unmet\s+(?:\w+\s+){0,2}demand", "capacity_pressure_proxy"),
     (r"expansion|opportunity score", "expansion_opportunity_score"),
     (r"demand growth", "demand_growth"),
     (r"utili[sz]ation", "capacity_utilization"),
@@ -97,7 +97,8 @@ RANK_RE = re.compile(r"\b(which|what)\s+(airports?|ones?|hubs?)\b|\b(top|best|st
 COMPARE_RE = re.compile(r"\b(compare|comparison|versus|vs\.?|against|between|differ\w*)\b", re.I)
 PROFILE_RE = re.compile(r"\b(what changed|what has changed|how has .* changed|trend\w*|profile|overview|tell me about|how is .* doing|summary of|changes? at)\b", re.I)
 ROUTE_RE = re.compile(r"\b(long[- ]haul|route mix|share of departures|percentage of departures|percent of departures|international share)\b", re.I)
-CPP_RE = re.compile(r"\b(capacity[- ]pressure|unmet demand|latent demand|capacity signal|constrained|pressure signal)\b", re.I)
+# "unmet demand", "unmet flight demand", "unmet passenger demand" (the brief's wording) all mean the capacity-pressure proxy
+CPP_RE = re.compile(r"\b(capacity[- ]pressure|unmet\s+(?:\w+\s+){0,2}demand|latent\s+(?:\w+\s+){0,2}demand|capacity signal|constrained|pressure signal)\b", re.I)
 METHOD_RE = re.compile(r"\b(how (is|are|do you|does it|did you) .*(calculat|comput|defin|scor|measur|work)|methodology|formula|definition|what counts as|define\b|how do you define|what is the (score|proxy|definition))", re.I)
 THRESHOLD_RE = re.compile(r"(\d{1,2}[,.]?\d{3}|\d{3,5})\s*(statute\s*)?(miles|mi\b|nm\b|nautical)", re.I)
 WORSENING_CANCEL_RE = re.compile(r"\b(worsening|rising|increasing|more|growing|higher)\s+cancellation", re.I)

@@ -24,7 +24,7 @@ Choose the block for your operating system. Keep this terminal open for the rema
 **Windows Command Prompt (`cmd.exe`):**
 
 ```bat
-py -3 -m venv .venv
+py -3.11 -m venv .venv
 .venv\Scripts\activate.bat
 python -m pip install -r requirements.txt
 copy .env.example .env
@@ -84,6 +84,8 @@ Open the local URL printed in the terminal, normally [http://localhost:8501](htt
 | SFO capacity pressure | `What is the capacity-pressure signal at SFO and why?` |
 | Live API | Enable **Include live context**, then ask: `What is the current operational status at LAX?` |
 
+The assignment's original wording also works in both modes, for example `Compare LA and Santa Ana airport congestion levels.` and `What is the unmet flight demand in SFO airport and why?` (`LA` resolves to LAX; `in LA` means Louisiana).
+
 The SFO analysis addresses the assignment's unmet-demand question with an explicitly labelled proxy and an explanation of what data is missing. It does not estimate a count of unserved passengers or flights.
 
 Open **How this was calculated** to inspect the tool, period, peer group and methodology. The sidebar sets the analysis period, geographic/size filters, minimum flight count and long-haul threshold. Defaults are **500 reported flights per window** for scoring and **2,000 statute miles** for long-haul routes.
@@ -96,7 +98,7 @@ Open **How this was calculated** to inspect the tool, period, peer group and met
 
 <img src="docs/screenshots/01_live_status_lax.png" alt="LAX live status showing Aviationstack, retrieval time and departure statistics" width="520">
 
-Captured **19 October 2026 at 19:22:14 UTC**: Aviationstack returned a sample of **100 departures**, including **46 delayed by 15+ minutes** and **0 cancellations**, from 4,565 matching records. These are captured sample figures, not today's full-airport statistics.
+Captured **19 October 2026 at 19:22:14 UTC**: Aviationstack returned a sample of **100 departures**, including **46 delayed by 15+ minutes** and **0 cancellations**. The `scripts/smoke_live.py` call one minute earlier reported 4,565 matching records behind that one-page sample. These are captured sample figures, not today's full-airport statistics.
 
 | Additional evidence | Screenshot |
 |---|---|
@@ -119,7 +121,7 @@ Seat occupancy and delays are screening signals. They do not establish a termina
 |---|---|
 | `python -m pytest -q` | Unit and integration tests using fixtures and mocked providers; no API keys required. |
 | `python scripts/smoke_streamlit.py` | Start the app and check its health endpoint. |
-| `python scripts/smoke_llm.py` | Exercise tool calls and follow-ups; needs the installed database and an LLM key. |
+| `python scripts/smoke_llm.py` | Exercise tool calls and follow-ups with the suggested questions and the assignment's verbatim wording (`--exam-only` runs just the latter); needs the installed database and an LLM key. |
 | `python scripts/smoke_live.py LAX` | Check Aviationstack access; needs its API key. |
 | `python scripts/refresh_data.py --show-metadata` | Inspect the installed dataset's sources and coverage. |
 
@@ -131,4 +133,4 @@ python scripts/refresh_data.py --scope nationwide
 
 This downloads several GB and takes longer than the prepared-data route. `--scope demo` uses the same pipeline with history starting in 2023; it is separate from the no-key Demo agent mode. See [dataset publishing instructions](docs/dataset-release.md) for creating a new release.
 
-**Common issues:** missing database → complete step 3; live unavailable → check the key, toggle and provider quota; model unavailable → check key/model access and the displayed fallback notice; database locked → stop Streamlit before replacing it. Application details are written to `logs/app.log`.
+**Common issues:** missing database → complete step 3; live unavailable → check the key, toggle and provider quota; model unavailable → check key/model access and the displayed fallback notice; database locked → stop Streamlit before replacing it; TLS errors on corporate networks → the dataset download, BTS refresh and live provider verify certificates through the operating-system trust store (`truststore`), otherwise point `REQUESTS_CA_BUNDLE` at a bundle that includes your organization's root. Application details are written to `logs/app.log`.
