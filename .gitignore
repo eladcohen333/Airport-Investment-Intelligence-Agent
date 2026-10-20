@@ -26,3 +26,6 @@ dist/
 *.duckdb.wal
 *.partial
 data/*.tmp
+
+# Local editor / preview configuration (not part of the submission)
+.claude/

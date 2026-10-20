@@ -108,4 +108,4 @@ Without a key, the Demo router handles supported patterns through the same tools
 
 Tests cover formulas, coverage, airport resolution, follow-ups, provider failures and dataset installation. Separate smoke scripts exercise the UI, LLM and live API; [screenshots](screenshots/) capture representative runs. Commands are in the [README](../README.md).
 
-Implementation references: [`scoring.py`](../src/scoring.py), [`tools.py`](../src/tools.py), [`agent.py`](../src/agent.py), [`demo_router.py`](../src/demo_router.py), [`airport_resolver.py`](../src/airport_resolver.py); last reviewed against `main` on 20 October 2026 (see the requirements audit in [IMPLEMENTATION_REPORT.md](../IMPLEMENTATION_REPORT.md)).
+Implementation references: [`scoring.py`](../src/scoring.py), [`tools.py`](../src/tools.py), [`agent.py`](../src/agent.py), [`demo_router.py`](../src/demo_router.py), [`airport_resolver.py`](../src/airport_resolver.py); last reviewed against `main` on 20 October 2026.
