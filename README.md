@@ -1,233 +1,134 @@
 # Airport Investment Intelligence Agent
 
-A locally runnable proof of concept for a U.S. airport-modernization investment firm. One bounded conversational
-analytics agent helps analysts find airports that merit further review because they show **sustained demand growth**,
-**high scheduled-capacity utilization**, or **operational pressure**.
+A conversational analytics app that helps analysts identify U.S. airports worth investigating for modernization or expansion. It combines public aviation data, deterministic calculations and an AI agent that selects analytical tools and explains their results.
 
-It is a **screening tool**. It does not calculate investment ROI, forecast profitability, measure unmet demand, or
-prove that terminal renovation causes an operational problem.
+**Purpose:** screen opportunities using passenger growth, seat utilization and operational pressure. Investment returns and direct unmet demand require additional data.
 
-## Architecture
+**Design document:** [Architecture, scoring methodology, tradeoffs and AI usage](docs/architecture.md).
 
-```text
-Browser
-  -> Streamlit application (app.py, src/ui_components.py, src/charts.py)
-      -> one LLM analytics agent (src/agent.py; Anthropic default, Gemini alternative, deterministic Demo mode)
-          -> allow-listed typed analytical tools (src/tools.py, Pydantic contracts in src/models.py)
-              -> deterministic Python and DuckDB calculations (src/analytics.py, src/scoring.py)
-                  -> local DuckDB historical store data/airport_intelligence.duckdb (src/db.py, src/data_ingestion.py)
-                  -> optional live aviation REST adapter (src/live_provider.py, Aviationstack)
-```
+## Quick start
 
-Historical data is the only input to rankings and scores. Live data answers current-status questions only and is
-always shown in its own `Current Operational Context` section. The historical store is either installed from a
-prepared GitHub Release asset (`scripts/download_dataset_release.py`) or rebuilt from BTS sources
-(`scripts/refresh_data.py`); `scripts/package_dataset_release.py` builds that asset from a validated local store. The language model never computes a number: it
-chooses a tool, passes validated parameters, and explains the tool result; a grounding guard checks that every
-figure in an answer appears in a tool result. See `docs/architecture.md`.
+Requires **Python 3.11+** and Git. Run the commands from the project directory. The app runs locally; no cloud deployment is required.
 
-## Setup
-
-Requires Python 3.11+ (on this machine: `"C:\Program Files\Python311\python.exe"`).
+### 1. Download the project
 
 ```bash
-"C:\Program Files\Python311\python.exe" -m venv .venv
+git clone https://github.com/eladcohen333/Airport-Investment-Intelligence-Agent.git
+cd Airport-Investment-Intelligence-Agent
 ```
 
-```bash
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
+### 2. Install dependencies
 
-```bash
+Choose the block for your operating system. Keep this terminal open for the remaining steps.
+
+**Windows Command Prompt (`cmd.exe`):**
+
+```bat
+py -3 -m venv .venv
+.venv\Scripts\activate.bat
+python -m pip install -r requirements.txt
 copy .env.example .env
 ```
 
-Edit `.env` and add any keys you have (all optional - the app starts without them):
-
-| Variable | Purpose |
-|---|---|
-| `LLM_PROVIDER` | `auto` (default), `anthropic`, `gemini` or `demo` |
-| `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Anthropic runtime (default model `claude-opus-5-5`) |
-| `GEMINI_API_KEY`, `GEMINI_MODEL` | Gemini runtime used when only a Gemini key is present (default `gemini-3.8-flash`) |
-| `AVIATIONSTACK_API_KEY`, `AVIATIONSTACK_BASE_URL` | live operational context (optional) |
-| `DUCKDB_PATH` | local store (default `data/airport_intelligence.duckdb`) |
-| `LONG_HAUL_THRESHOLD_MILES`, `MIN_REPORTED_FLIGHTS` | analysis defaults (2000 miles, 500 flights) |
-| `DEMO_SCOPE_START`, `NATIONWIDE_SCOPE_START` | first month of each refresh scope (2023-01, 2019-01) |
-
-Without an LLM key the sidebar shows **Demo / deterministic mode**: questions are routed by rules to the same
-tools, so the suggested questions and the supported question patterns work fully.
-
-## Quick start with prepared historical data
-
-Recommended path for reviewers: no BTS downloads (1-2.5 GB) and no 25-60 minute refresh. The prepared dataset is the
-same aggregated DuckDB store that `scripts/refresh_data.py --scope nationwide` builds, distributed as one GitHub
-Release asset.
-
-1. Install dependencies (Setup above: create the venv, `pip install -r requirements.txt`, copy `.env.example` to `.env`).
-2. Download, verify and install the prepared dataset. The script streams the asset, checks its SHA-256 before opening
-   it, accepts only an archive holding exactly `airport_intelligence.duckdb` and `dataset_manifest.json`, validates the
-   database with the project's own helpers, and installs it atomically as `data/airport_intelligence.duckdb`:
+**macOS / Linux:**
 
 ```bash
-.venv\Scripts\python.exe scripts/download_dataset_release.py --url https://github.com/eladcohen333/Airport-Investment-Intelligence-Agent/releases/download/dataset-nationwide-2026-07/airport_intelligence_nationwide_2019-01_to_2026-07.zip --sha256 1a66a17b1fdbc92951e7c19933e574a0c0a606b7c1e7021ac2d1128a698d89ed
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+cp .env.example .env
 ```
 
-3. Run the app:
+### 3. Install the prepared historical dataset
+
+**Cloning the repository does not include the database.** Run this command once in the activated environment:
 
 ```bash
-.venv\Scripts\python.exe -m streamlit run app.py
+python scripts/download_dataset_release.py --url https://github.com/eladcohen333/Airport-Investment-Intelligence-Agent/releases/download/dataset-nationwide-2026-07/airport_intelligence_nationwide_2019-01_to_2026-07.zip --sha256 1a66a17b1fdbc92951e7c19933e574a0c0a606b7c1e7021ac2d1128a698d89ed
 ```
 
-> **Current asset:** Release `dataset-nationwide-2026-07` holds `airport_intelligence_nationwide_2019-01_to_2026-07.zip`
-> (nationwide scope, 2019-01 to 2026-07, refreshed 2026-10-19 12:22 UTC, 19.3 MiB) and its `.sha256` file. The digest
-> above is the ZIP's SHA-256; the script refuses anything that does not match it. Newer assets are published by the
-> process in `docs/dataset-release.md`; the asset name always encodes the scope and coverage it holds.
+The installer verifies the checksum and database structure, then installs `data/airport_intelligence.duckdb`. It prints `Checksum verified`, the coverage and the refresh time. An existing database is preserved unless `--force` is supplied.
 
-- The asset contains aggregated DuckDB tables only (`airports`, `airport_monthly_traffic`, `airport_monthly_operations`,
-  `route_monthly_metrics`, `airport_scores`, `data_refresh_metadata`). It contains no raw BTS ZIP/CSV files, no live
-  API data and no secrets.
-- The dataset's exact scope, date coverage and refresh timestamp are shown in the app header and sidebar, in
-  `dataset_manifest.json` inside the archive, and by `python scripts/refresh_data.py --show-metadata`.
-- An existing local database is never overwritten unless you pass `--force`.
-- A full local rebuild from BTS sources remains available (next section) and produces the same tables.
-- Never commit database files, `dist/` artifacts, raw data, `.env`, secrets or logs; `.gitignore` excludes them.
+The [published dataset](https://github.com/eladcohen333/Airport-Investment-Intelligence-Agent/releases/tag/dataset-nationwide-2026-07) is **19.3 MiB compressed**, covers **January 2019 through July 2026**, and was refreshed on **19 October 2026**. It contains aggregated historical data and metadata; live API responses and credentials are excluded.
 
-## Rebuild the historical data locally from BTS sources
+### 4. Choose how to run the agent
 
-Alternative to the quick start: build the same store yourself from public BTS TranStats data.
+Edit `.env` if you want AI or live API access:
 
-```bash
-.venv\Scripts\python.exe scripts/refresh_data.py --scope demo
-```
-
-```bash
-.venv\Scripts\python.exe scripts/refresh_data.py --scope nationwide
-```
-
-- `demo`: all U.S. airports, months from 2023-01 to the latest available (about 1.3 GB of downloads, ~15-25 minutes).
-- `nationwide`: the same pipeline from 2019-01 (about 2.8 GB, 45-60 minutes).
-- Options: `--start YYYY-MM`, `--end YYYY-MM`, `--keep-raw` (cache zips under `data/raw/` for re-runs), `--workers 4`,
-  `--show-metadata`, `--scores-only`.
-- The runtime application reads only the aggregated DuckDB tables; raw files are never queried during a chat.
-- If a source fails, the metadata table records `failed` honestly and the command exits with code 2 and prints the
-  retry command. Nothing is faked.
-
-## Run
-
-```bash
-.venv\Scripts\python.exe -m streamlit run app.py
-```
-
-Headless start check: `python scripts/smoke_streamlit.py`.
-
-## Test
-
-```bash
-.venv\Scripts\python.exe -m pytest -q
-```
-
-Smoke tests that need credentials and a refreshed database:
-
-```bash
-.venv\Scripts\python.exe scripts/smoke_llm.py
-```
-
-```bash
-.venv\Scripts\python.exe scripts/smoke_live.py LAX
-```
-
-## Data sources
-
-| Source | Used for | Notes |
+| Mode | Configuration | What works |
 |---|---|---|
-| BTS TranStats **T-100 Segment (All Carriers)** | passengers, available seats, departures performed, route distance | one file per calendar year via the TranStats download form; U.S. origins, scheduled service (class F) |
-| BTS TranStats **Reporting Carrier On-Time Performance (1987-present)** | scheduled flights, departures delayed 15+ minutes, cancellations, departure delay minutes | static monthly zips; reporting carriers only |
-| **OurAirports** `airports.csv` (public domain) | airport names, locations, airport type | fallback: names derived from BTS city/state fields |
-| **Aviationstack** `/v1/flights` (optional, live) | current departure status sample | never used in scores |
+| Demo | Leave API keys empty | Historical analysis through the same tools, using rule-based question routing. Start with the suggested questions; arbitrary phrasing is limited. |
+| AI agent | Set `GEMINI_API_KEY` or `ANTHROPIC_API_KEY` | The model interprets questions, selects tools and explains their results. Calculations remain deterministic. |
+| Live context | Also set `AVIATIONSTACK_API_KEY` | Current departure-status samples when **Include live context** is enabled. |
 
-## KPI formulas
+`LLM_PROVIDER=auto` chooses Anthropic when its key is present, otherwise Gemini, otherwise Demo. Set `LLM_PROVIDER=anthropic`, `gemini` or `demo` to choose explicitly. Model names are configured by `ANTHROPIC_MODEL` and `GEMINI_MODEL`; use a model available to your account. Restart the app after changing `.env`. Credentials stay local.
 
-```text
-Demand Growth            = (passengers latest 12 months - passengers prior 12 months) / passengers prior 12 months
-Capacity Utilization     = total passengers / total available seats (latest 12 months)
-Operational Pressure     = 70% x delayed-departure rate + 30% x cancellation rate
-Expansion Opportunity    = 40% demand growth + 35% capacity utilization + 25% operational pressure (0-100 components)
-Capacity Pressure Proxy  = 50% utilization percentile + 30% demand-growth percentile + 20% operational-pressure percentile
+### 5. Start the chat
+
+```bash
+python -m streamlit run app.py
 ```
 
-- Delayed departure: delayed by 15 minutes or more. Delay rate = delayed / operated departures; cancellation rate =
-  cancelled / scheduled flights.
-- Long-haul flight: route segment of at least 2,000 statute miles (configurable in the sidebar).
-- New England: CT, ME, MA, NH, RI, VT.
-- Peer group: airports in the active data scope matching the optional state/region and size-band filters that pass
-  the coverage rule (at least 500 reported flights in **both** 12-month windows, for On-Time flights and T-100
-  departures). Excluded airports are listed with the reason.
-- Normalization: each component is winsorized at the 5th/95th percentile within the peer group, then min-max scaled
-  to 0-100. Size band is a peer filter only and never adds points.
-- Confidence: high (12/12 months, peer group >= 10, no quality flags, period not clamped), medium, or low (< 10 months,
-  peer group < 5, or any non-ok status).
+Open the local URL printed in the terminal, normally [http://localhost:8501](http://localhost:8501). Confirm that the sidebar shows the historical coverage and the expected **LLM mode**.
 
-## Limitations
+**Once installed, historical analysis in Demo mode needs no external API calls.** AI narration and live context require their respective keys and network access.
 
-- Screening signals only: **not ROI, not profitability, not true unmet-demand modelling**. The capacity-pressure
-  proxy is a proxy; direct unmet demand would require search, booking, fare, leakage, or alternative-airport data.
-- Delay and cancellation statistics cover BTS reporting carriers only; small airports may be excluded for coverage.
-- T-100 traffic uses scheduled passenger/combination service (class F); all-cargo and charter operations are excluded.
-- Seasonal airports can pass the flight-count rule with fewer than 12 reporting months; their rows carry lower confidence.
-- The live sample is one page of the provider's feed (up to 100 departures) and is not comparable to historical rates.
+## Try these questions
 
-## Screenshots
-
-Real answers captured from the running app against the nationwide store (refreshed 2026-10-19) with
-`python scripts/capture_screenshots.py` (Playwright driving the installed Chrome; nothing is mocked).
-
-| File | What it shows |
+| Analysis | Question |
 |---|---|
-| `docs/screenshots/01_live_status_lax.png` | `Include live context` on, `What is the current operational status at LAX?`: a real Aviationstack `/v1/flights` call (retrieved 2026-10-19T19:22:14Z, 100 sampled departures, 46 delayed 15+ min) rendered under `Current Operational Context`, separate from the historical signal |
-| `docs/screenshots/02_new_england_ranking_methodology.png` | New England expansion ranking with the `How this was calculated` panel open: tool, peer group, formula, winsorization bounds, exclusions |
-| `docs/screenshots/03_followup_context_2024.png` | `Compare LAX and Santa Ana Airport, SNA, congestion levels.` followed by `What about 2024?`: the follow-up reuses the comparison set and switches the period to calendar 2024 vs 2023 |
-| `docs/screenshots/04_sfo_capacity_pressure_proxy.png` | `What is the capacity-pressure signal at SFO and why?`: the indirect proxy (50/30/20 percentile weights) with its stated assumptions and the "not measured unmet demand" limitation |
+| Expansion ranking | `Which airports in New England are strong candidates for terminal expansion?` |
+| Congestion comparison | `Compare LAX and Santa Ana Airport, SNA, congestion levels.` |
+| Conversational follow-up | After that comparison: `What about 2024?` |
+| Anchorage route mix | `What percentage of departures from Anchorage, ANC, are long-haul?` |
+| SFO capacity pressure | `What is the capacity-pressure signal at SFO and why?` |
+| Live API | Enable **Include live context**, then ask: `What is the current operational status at LAX?` |
 
-## Sample questions
+The SFO analysis addresses the assignment's unmet-demand question with an explicitly labelled proxy and an explanation of what data is missing. It does not estimate a count of unserved passengers or flights.
 
-- Which airports in New England are strong candidates for terminal expansion?
-- Compare LAX and Santa Ana Airport, SNA, congestion levels.
-- What percentage of departures from Anchorage, ANC, are long-haul?
-- What is the capacity-pressure signal at SFO and why?
-- Which medium-sized airports in Texas have the strongest demand growth?
-- Compare Denver, Phoenix, and Las Vegas.
-- What changed at Boston Logan in 2024?
-- What is the current operational status at LAX?
-- Which airports have growing passengers and worsening cancellations?
-- Follow-up: "Compare LAX and SNA congestion." then "What about 2024?"
+Open **How this was calculated** to inspect the tool, period, peer group and methodology. The sidebar sets the analysis period, geographic/size filters, minimum flight count and long-haul threshold. Defaults are **500 reported flights per window** for scoring and **2,000 statute miles** for long-haul routes.
 
-## Optional live operational context
+## Demo evidence
 
-Historical analysis and airport rankings run entirely from the local BTS-based DuckDB store and do not depend on a
-live API.
+### Live API call at LAX
 
-When `AVIATIONSTACK_API_KEY` and network access are available, the application can request a current flight-status
-sample and display it separately from the historical investment signal.
+[Open the full screenshot](docs/screenshots/01_live_status_lax.png).
 
-The live-provider adapter is covered by response and error-handling tests. End-to-end validation against Aviationstack
-was performed on 2026-10-19 from the build environment (`scripts/smoke_live.py LAX` returned `status=ok` with a
-100-departure sample; see `docs/screenshots/01_live_status_lax.png`). On managed Windows machines behind TLS
-inspection the adapter verifies certificates through the operating-system trust store (`truststore`), the same
-mechanism the BTS refresh uses; without it the call fails with `SSLError` rather than returning data.
+<img src="docs/screenshots/01_live_status_lax.png" alt="LAX live status showing Aviationstack, retrieval time and departure statistics" width="520">
 
-- Live data never enters the historical tables and never affects a score or ranking.
-- Without `AVIATIONSTACK_API_KEY` the live tool returns an explicit `unavailable` state; historical analysis is unaffected.
-- Free Aviationstack plans have small monthly quotas; `usage_limit_reached` / `rate_limit_reached` are shown as
-  unavailable with the provider's `Retry-After` when present.
-- Live context is only requested when the sidebar toggle is on.
+Captured **19 October 2026 at 19:22:14 UTC**: Aviationstack returned a sample of **100 departures**, including **46 delayed by 15+ minutes** and **0 cancellations**, from 4,565 matching records. These are captured sample figures, not today's full-airport statistics.
 
-## Troubleshooting (Windows / corporate networks)
+| Additional evidence | Screenshot |
+|---|---|
+| Ranking with methodology expanded | [New England](docs/screenshots/02_new_england_ranking_methodology.png) |
+| Comparison followed by a year-only question | [LAX / SNA and 2024](docs/screenshots/03_followup_context_2024.png) |
+| Proxy and its limitations | [SFO](docs/screenshots/04_sfo_capacity_pressure_proxy.png) |
 
-- TLS inspection: `requests` uses certifi's CA bundle, which may not include your organization's root. The refresh,
-  the live provider and the dataset download script use `truststore` (Windows certificate store) automatically;
-  alternatively set `REQUESTS_CA_BUNDLE` to a bundle that includes the root. `curl` may need `--ssl-no-revoke` on such
-  networks.
-- Screenshots: `python scripts/capture_screenshots.py` needs `pip install playwright` (dev-only, not in
-  `requirements.txt`) and drives the installed Chrome or Edge; no browser download.
-- `python` on PATH older than 3.11: create the venv with `py -3.11 -m venv .venv` or the full interpreter path.
-- Logs: `logs/app.log` (application), `logs/refresh_demo.log` (if you redirect the refresh output there).
+## Data and scope
+
+- **BTS T-100:** passengers, seats, departures and route distance for U.S. origins, scheduled passenger/combination service. All-cargo and charter operations are excluded, including in the Anchorage analysis.
+- **BTS On-Time Performance:** delays and cancellations for reporting carriers; coverage is narrower than T-100.
+- **OurAirports:** airport reference information, with a BTS-derived fallback.
+- **Aviationstack:** optional live REST API. Its one-page sample is shown separately and never changes historical rankings.
+
+Seat occupancy and delays are screening signals. They do not establish a terminal bottleneck, renovation profitability or measured unmet demand. See the [design document](docs/architecture.md) for formulas, uncertainty and tradeoffs.
+
+## Validation and maintenance
+
+| Command | Purpose / requirements |
+|---|---|
+| `python -m pytest -q` | Unit and integration tests using fixtures and mocked providers; no API keys required. |
+| `python scripts/smoke_streamlit.py` | Start the app and check its health endpoint. |
+| `python scripts/smoke_llm.py` | Exercise tool calls and follow-ups; needs the installed database and an LLM key. |
+| `python scripts/smoke_live.py LAX` | Check Aviationstack access; needs its API key. |
+| `python scripts/refresh_data.py --show-metadata` | Inspect the installed dataset's sources and coverage. |
+
+To rebuild from public BTS sources, stop the app and run:
+
+```bash
+python scripts/refresh_data.py --scope nationwide
+```
+
+This downloads several GB and takes longer than the prepared-data route. `--scope demo` uses the same pipeline with history starting in 2023; it is separate from the no-key Demo agent mode. See [dataset publishing instructions](docs/dataset-release.md) for creating a new release.
+
+**Common issues:** missing database → complete step 3; live unavailable → check the key, toggle and provider quota; model unavailable → check key/model access and the displayed fallback notice; database locked → stop Streamlit before replacing it. Application details are written to `logs/app.log`.

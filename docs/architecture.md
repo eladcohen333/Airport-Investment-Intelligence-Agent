@@ -1,123 +1,111 @@
-# Architecture
+# Short Design & Architecture
 
-## Goal and boundaries
+## 1. Purpose and approach
 
-One bounded conversational analytics agent for a U.S. airport-modernization investment firm. It screens airports for
-sustained demand growth, high scheduled-capacity utilization and operational pressure. It is deliberately **not** a
-distributed system: no FastAPI, Docker, cloud infrastructure, authentication, RAG, vector database, MCP server,
-multi-agent orchestration or external database.
+The agent screens U.S. airports for modernization opportunities using passenger growth, seat utilization and operational performance. It produces candidates for investigation; profitability, physical terminal constraints and unserved demand require additional commercial/infrastructure data.
 
-```text
-Browser
-  -> Streamlit application
-      -> one LLM analytics agent (Anthropic | Gemini | Demo deterministic mode)
-          -> allow-listed typed analytical tools
-              -> deterministic Python and DuckDB calculations
-                  -> local DuckDB historical data store
-                  -> optional live aviation REST API adapter
+| Assignment question | Implemented analysis |
+|---|---|
+| New England expansion candidates | Rank eligible airports by a deterministic Expansion Opportunity Score. |
+| Los Angeles vs Santa Ana congestion | Compare LAX and SNA using delay/cancellation rates and average delay; show flight volume as context. |
+| Anchorage long-haul percentage | Divide long-haul departures by all in-scope departures from ANC. |
+| SFO unmet demand and why | Explain a Capacity Pressure Proxy, its component contributions and the missing evidence needed to measure unmet demand directly. |
+
+## 2. Architecture and data flow
+
+```mermaid
+flowchart TD
+    UI["Streamlit chat"] --> Agent["AI agent or Demo router"]
+    Agent --> Tools["Typed analytical tools"]
+    Tools --> Calc["Python analytics and scoring"]
+    Calc --> DB[("Local DuckDB")]
+    Tools --> Live["Live provider adapter"]
+    Live --> API["Aviationstack REST API"]
+    Sources["BTS and airport reference data"] --> Refresh["Batch refresh and validation"]
+    Refresh --> DB
 ```
 
-## Modules
+Streamlit sends the question, filters and session context to the agent. Pydantic validates tool arguments; predefined functions return metrics, status, period, sources, refresh time, confidence and limitations. The UI displays the explanation, tables, charts and methodology.
 
-| Module | Responsibility |
+| Data source | Use and scope |
 |---|---|
-| `app.py` | Streamlit entry: sidebar state, chat loop, error boundary (no stack traces reach the user) |
-| `src/ui_components.py`, `src/charts.py` | tables, one Plotly chart per answer, methodology panel, limitations, evidence block |
-| `src/agent.py` | backend-neutral tool-calling loop, system prompt, grounding guard, session-context update |
-| `src/llm_backends.py` | `AnthropicBackend` (default), `GeminiBackend` (alternative), provider selection |
-| `src/demo_router.py` | rule-based parse -> route -> tool -> templated conclusion (no-key mode and LLM-failure fallback) |
-| `src/tools.py` | the eight typed tools, registry, `execute_tool`, JSON-schema export (strict Anthropic, Gemini variant) |
-| `src/models.py` | Pydantic contracts: tool inputs, `ToolResult` envelope, payloads, `SessionContext`, `RunDefaults`, `AgentTurn` |
-| `src/analytics.py` | coverage detection, periods, raw KPIs, route mix, monthly series, score snapshot |
-| `src/scoring.py` | pure math: normalization, scores, exclusions, confidence, methodology text |
-| `src/airport_resolver.py` | names/aliases/cities -> IATA codes with explicit ambiguity |
-| `src/data_ingestion.py`, `scripts/refresh_data.py` | BTS adapters, validators, aggregation into DuckDB, metadata |
-| `src/db.py` | schema, connections, metadata, atomic replacement |
-| `src/live_provider.py` | `LiveFlightProvider` protocol, Aviationstack adapter, null provider |
-| `src/config.py` | settings from environment/.env, logging |
+| BTS T-100 Segment | Passengers, seats, departures and distances. U.S. origins; scheduled passenger/combination service, class F. |
+| BTS On-Time Performance | Flights, delays of 15+ minutes and cancellations. Reporting carriers only. |
+| OurAirports / BTS fallback | Airport names and locations. Size bands derive from annual origin passengers. |
+| Aviationstack `/v1/flights` | Optional current departure sample, up to 100 records. |
 
-## Historical and live data are separate
+Historical inputs are public file downloads; Aviationstack is the live REST integration. Batch refresh validates and aggregates data into six DuckDB tables: airport reference, monthly traffic, operations, routes, score snapshots and refresh metadata. The app reads them through read-only connections and recalculates requested rankings.
 
-- **Historical** (source of truth for rankings, growth, utilization, capacity pressure): BTS T-100 Segment (passengers,
-  seats, departures, distance) and BTS On-Time Performance (flights, 15-minute delays, cancellations), aggregated to
-  monthly airport and route tables at refresh time. The runtime queries only these aggregates.
-- **Live** (optional, current status only): Aviationstack `/v1/flights` for one airport. It is never written to the
-  historical tables, never influences a score, and is rendered under its own `Current Operational Context` heading.
-  Missing key, rate limits and provider errors map to explicit `unavailable` / `error` statuses.
+A prepared GitHub Release avoids repeating source downloads. Its installer verifies hashes, archive contents and database validity. Installation and refresh replace the database atomically. Live responses never enter this store or change scores.
 
-## DuckDB schema (`data/airport_intelligence.duckdb`)
+## 3. Scoring methodology
 
-| Table | Grain | Key columns |
-|---|---|---|
-| `airports` | airport | code, name, city, state, region, size_band, aliases, airport_type, has_* flags, latest_12m_passengers |
-| `airport_monthly_traffic` | month x airport | passengers, available_seats, departures_performed/scheduled, load_factor |
-| `airport_monthly_operations` | month x airport | total_flights, operated_flights, delayed_departures_15m, delay_rate, cancelled_flights, cancellation_rate, dep_delay_minutes_sum, avg_departure_delay_minutes |
-| `route_monthly_metrics` | month x origin x destination | distance_miles, passengers, available_seats, departures_performed, is_long_haul |
-| `airport_scores` | airport x period x peer group | raw KPIs, component scores, expansion score, data_quality_status (snapshot written at refresh) |
-| `data_refresh_metadata` | source x refresh | scope, coverage, refreshed_at, record_count, status, notes |
+### Period and raw KPIs
 
-The refresh builds a temporary database and atomically replaces the live file; the app opens read-only cursors.
+Analysis compares **two adjacent 12-month windows**, ending at the latest usable month shared by traffic and operations. A 2024 request compares calendar 2024 with 2023. Future requests are clamped to coverage and disclosed; unsupported earlier periods return insufficient data.
 
-## Ingestion pipeline
+`P` denotes passengers and `S` seats. Ratios use window totals.
 
-1. Determine the month range (`--start`, `--end` or the latest On-Time month found on the BTS server).
-2. T-100 Segment (All Carriers): one TranStats form postback per calendar year; keep U.S. origins and scheduled
-   service (class F); aggregate by month x origin (traffic) and month x origin x destination (routes).
-3. On-Time Performance: static monthly zips downloaded with four workers, aggregated by month x origin; validated for
-   columns, period, airport codes, rate ranges and national volume.
-4. OurAirports reference joined on IATA code; FAA-style size bands from the latest 12 months of origin passengers;
-   aliases generated for the resolver.
-5. Metadata row per source (`ok` / `partial` / `failed` with the error); default score snapshot; atomic replace.
-
-## Analytics and scoring
-
-- Period = two adjacent rolling 12-month windows ending at a chosen month (calendar years are the `-12` case). The
-  default end month is the latest month that both traffic and operations cover; requests beyond coverage are clamped
-  and noted; requests before coverage return `insufficient_data`.
-- Raw KPIs are window sums (conditional aggregation in DuckDB) with ratios computed in Python; zero denominators
-  yield `None` with a reason code.
-- Peer group = scope x filters x coverage rule. Components are winsorized (p5/p95) and min-max normalized to 0-100;
-  the Expansion Opportunity Score is the 40/35/25 weighted sum; the Capacity Pressure Proxy uses Hazen percentile
-  ranks with 50/30/20 weights. Ties break on airport code; results are byte-deterministic.
-- Confidence is derived from coverage, months present, peer-group size, data-quality flags and period clamping.
-
-## Tools and contracts
-
-Every tool returns a `ToolResult` with `status`, `data_scope`, `data_period`, `sources`, `refresh_timestamp`,
-`definitions`, `metrics`, `limitations`, `confidence`, plus a typed payload for the UI. `execute_tool` validates
-inputs with Pydantic and never raises. Tools: `resolve_airport`, `get_airport_profile`, `rank_airports`,
-`compare_airports`, `analyze_route_mix`, `analyze_capacity_pressure`, `get_live_operational_context`, `get_methodology`.
-
-## Agent behaviour
-
-- With an LLM key: the model classifies the question, calls approved tools (at most 4 iterations / 6 calls), and
-  explains only tool output. The system prompt forbids new arithmetic, causal or ROI claims, and scores for non-ok
-  statuses; follow-ups reuse the `SessionContext` block (airport codes, comparison set, filters, period, last tool).
-- Grounding guard: numbers in the answer must appear in tool results; an answer with numbers but no tool call becomes
-  a clarification; unverified figures are flagged.
-- Without a key: the deterministic router parses period, threshold, size words, geography, metric hints, screening
-  conditions and airports, maps the intent to a tool, merges follow-ups onto the last tool input, and renders a
-  templated conclusion. The same renderer is the fallback when an LLM call fails after tools ran.
-
-## Failure and integrity behaviour
-
-| Condition | Behaviour |
+| Metric | Calculation |
 |---|---|
-| Unknown airport | suggestions or a clarification question |
-| Ambiguous airport | candidate list, no guess |
-| Missing historical coverage | coverage gap explained, no score |
-| Insufficient data | `insufficient_data`, excluded from ranking with the reason |
-| Missing live key | historical works; live says unavailable |
-| Live API failure | separate error state; historical unchanged |
-| Invalid follow-up | one concise clarification |
-| Internal error | safe message in the UI; details in `logs/app.log` |
+| Demand growth, G | `(P_latest - P_prior) / P_prior` |
+| Seat-capacity utilization, U | `P_latest / S_latest` |
+| Delay rate, D | `Departures delayed 15+ minutes / operated departures` |
+| Cancellation rate, C | `Cancelled flights / scheduled flights` |
+| Operational pressure, O | `0.70 × D + 0.30 × C` |
+| Long-haul share | `100 × departures on segments >= threshold / all in-scope departures` |
 
-## Dataset distribution
+Long-haul defaults to **2,000 statute miles**, weighted by departures. ANC's result excludes all-cargo and charter operations.
 
-The aggregated store can be installed without running the refresh. `scripts/package_dataset_release.py` validates a
-local `data/airport_intelligence.duckdb` (all tables with rows, metadata present, every source `ok`, 24 months of
-coverage) and writes `dist/airport_intelligence_<scope>_<start>_to_<end>.zip` holding exactly the DuckDB file and a
-`dataset_manifest.json`, plus a `.sha256` file. `scripts/download_dataset_release.py` streams a published asset,
-verifies the checksum before opening it, rejects unsafe or unexpected archive members, validates the extracted
-database with the same helpers and installs it atomically. Shared logic lives in `src/dataset_release.py`; the manual
-publishing steps are in `docs/dataset-release.md`. Raw BTS files and live data are never part of the asset.
+### Expansion Opportunity Score
+
+Peers match the requested geography and optional size filter, subject to coverage checks. New England is CT, ME, MA, NH, RI and VT.
+
+Clip `G`, `U` and `O` at peer percentiles 5 and 95, then min-max scale each clipped component to 0–100. Constant components map to 50; fewer than two peers yields no normalized expansion score.
+
+**Expansion score = 0.40 × normalized G + 0.35 × normalized U + 0.25 × normalized O.**
+
+Weights prioritize growth, then utilization and pressure; they are design choices, not learned investment predictors. Scores depend on the peer group, so filters can change them. Airport size earns no points.
+
+### Capacity Pressure Proxy
+
+The SFO analysis uses a separate calculation:
+
+**Proxy = 0.50 × utilization percentile + 0.30 × growth percentile + 0.20 × pressure percentile.**
+
+Percentiles use `100 × (average rank - 0.5) / peer count`. Default peers are eligible airports in the same size band across the loaded scope; fewer than five triggers a disclosed fallback to all size bands.
+
+This indicates relative pressure, not quantified unmet demand or causation. Search, booking, fare, leakage or alternative-airport data would be needed.
+
+### Coverage and uncertainty
+
+Scoring requires **500 On-Time flights and 500 T-100 departures in each window**, valid denominators and complete component values. Exclusions show reasons; seasonal airports can pass with incomplete months.
+
+Scoring confidence is a quality heuristic. **High:** 12 months per source/window, at least 10 peers, no quality flags or clamping. **Low:** failed coverage, fewer than 10 months or fewer than five peers. Other eligible cases are **medium**. These labels are not investment-success probabilities.
+
+## 4. Where and how AI is used
+
+One Anthropic/Gemini agent interprets questions, selects tools and explains results. Eight tools cover airport resolution, profiles, ranking, comparison, route mix, capacity pressure, live context and methodology. Python/DuckDB computes all KPIs and scores; the model has no arbitrary SQL tool.
+
+Each turn allows **four iterations and six tool calls**. Structured session context retains airports, periods, filters and the previous analysis. `What about 2024?` can therefore preserve LAX/SNA and change the year. Ambiguous names trigger clarification.
+
+The prompt requires tool-supported figures and caveats. A numeric check permits rounding and flags unmatched figures. Numeric answers without tool calls become clarifications; unmatched figures after tool calls remain visible with warnings. This is not a semantic correctness guarantee.
+
+Without a key, the Demo router handles supported patterns through the same tools. LLM failures fall back to deterministic routing/summaries with a notice. Live failures are reported separately; historical analysis continues.
+
+## 5. Key tradeoffs
+
+| Decision | Benefit and consequence |
+|---|---|
+| Local Streamlit + DuckDB | Reproducible POC setup; hosted deployment, authentication and multi-user operations remain outside scope. |
+| Monthly aggregates / 12-month windows | Fast queries, reduced seasonality; publication lag and no intraday analysis. |
+| Heuristic weights / peer normalization | Auditable scores; sensitive to peers, small passenger baselines and unvalidated investment assumptions. |
+| Public passenger/operations data | Broad coverage; seat occupancy is not terminal occupancy. Weather/airline issues can drive delays; source coverage differs. |
+| Separate live context | Stable historical scores; live results remain a limited sample. |
+| Bounded AI tools | Traceable calculations; questions beyond implemented tools need clarification or development. |
+
+## 6. Verification and implementation references
+
+Tests cover formulas, coverage, airport resolution, follow-ups, provider failures and dataset installation. Separate smoke scripts exercise the UI, LLM and live API; [screenshots](screenshots/) capture representative runs. Commands are in the [README](../README.md).
+
+Implementation references: [`scoring.py`](../src/scoring.py), [`tools.py`](../src/tools.py), [`agent.py`](../src/agent.py); reviewed at [revision 0dbaba3](https://github.com/eladcohen333/Airport-Investment-Intelligence-Agent/commit/0dbaba3e7203fde955ac85ae88466c67bdf3cf25), 19 October 2026.
